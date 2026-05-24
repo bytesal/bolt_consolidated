@@ -1,127 +1,235 @@
 import discord
-from discord import app_commands
 from discord.ext import commands
+from discord import app_commands
 
-
-# ---------------------------------------------------------------------------
-# Dropdown select menu for command categories
-# ---------------------------------------------------------------------------
 
 class HelpDropdown(discord.ui.Select):
     def __init__(self):
         options = [
             discord.SelectOption(
-                label="Moderation System",
-                description="View all moderation and enforcement commands.",
-                emoji="⚠️",
+                label="Moderation",
+                emoji="🛡️",
+                description="View moderation commands."
             ),
             discord.SelectOption(
-                label="Support & Modmail",
-                description="View ticketing and support commands.",
-                emoji="✉️",
+                label="Modmail",
+                emoji="📩",
+                description="View modmail commands."
             ),
             discord.SelectOption(
-                label="Staff & Quotas",
-                description="View staff management and shift commands.",
-                emoji="💼",
-            ),
-            discord.SelectOption(
-                label="System & Utility",
-                description="View core setup and utility commands.",
+                label="Utility",
                 emoji="⚙️",
+                description="View utility commands."
+            ),
+            discord.SelectOption(
+                label="Staff",
+                emoji="👥",
+                description="View staff management commands."
             ),
         ]
+
         super().__init__(
-            placeholder="Select a category to view its commands...",
+            placeholder="Select a category...",
+            min_values=1,
+            max_values=1,
             options=options,
-            custom_id="bolt_help_dropdown_persistent",
+            custom_id="help_menu_dropdown"
         )
 
     async def callback(self, interaction: discord.Interaction):
-        selection = self.values[0]
-        embed = discord.Embed(color=discord.Color.teal())
 
-        if selection == "Moderation System":
-            embed.title = "⚠️ Moderation Commands"
+        category = self.values[0]
+
+        embed = discord.Embed(
+            color=discord.Color.blurple()
+        )
+
+        # =====================================================
+        # MODERATION
+        # =====================================================
+
+        if category == "Moderation":
+
+            embed.title = "🛡️ Moderation Commands"
+
             embed.description = (
-                "`/warn <user> <reason> [evidence]` — Issue a formal warning to a user.\n"
-                "`/adwarn <user> <reason> [evidence]` — Issue an advertising policy warning.\n"
-                "`/history <user>` — View a user's moderation history."
+                "Commands used by moderators and administrators."
             )
 
-        elif selection == "Support & Modmail":
-            embed.title = "✉️ Support & Modmail Commands"
-            embed.description = (
-                "`/staffstats` — View staff ticket resolution statistics.\n"
-                "*Support sessions are handled automatically via DMs.*"
+            commands_list = [
+                "`/warn` → Warn a member.",
+                "`/timeout` → Timeout a member.",
+                "`/mute` → Mute a member.",
+                "`/kick` → Kick a member.",
+                "`/ban` → Ban a member.",
+                "`/softban` → Softban a member.",
+                "`/purge` → Delete messages.",
+                "`/slowmode` → Set slowmode.",
+                "`/lock` → Lock a channel.",
+                "`/unlock` → Unlock a channel.",
+                "`/nickname` → Change nickname.",
+                "`/role` → Add or remove roles.",
+                "`/history` → View moderation history.",
+                "`/setmodlog` → Configure mod logs.",
+            ]
+
+            embed.add_field(
+                name="Commands",
+                value="\n".join(commands_list),
+                inline=False
             )
 
-        elif selection == "Staff & Quotas":
-            embed.title = "💼 Staff & Quota Commands"
+        # =====================================================
+        # MODMAIL
+        # =====================================================
+
+        elif category == "Modmail":
+
+            embed.title = "📩 Modmail Commands"
+
             embed.description = (
-                "`/setdepartment <member> <department>` — Assign a staff member to a department.\n"
-                "`/removedepartment <member>` — Remove a member from their department.\n"
-                "`/addrank <name> <emoji> <description>` — Create a new staff rank profile.\n"
-                "`/addduty <rank> <duty>` — Add a duty requirement to an existing rank.\n"
-                "`/poststaffdropdown` — Post the staff ranks overview dropdown.\n"
-                "`/deployquotamatrix` — Deploy the shift and quota tracking dashboard."
+                "Support ticket and modmail system commands."
             )
 
-        elif selection == "System & Utility":
-            embed.title = "⚙️ System & Utility Commands"
-            embed.description = (
-                "`/rank [member]` — Check a member's level and XP.\n"
-                "`/sticky <message>` — Pin a message to the bottom of the channel.\n"
-                "`/unsticky` — Remove the sticky message from the channel.\n"
-                "`/setwelcome <channel> <message>` — Set the welcome message.\n"
-                "`/setleave <channel> <message>` — Set the leave message.\n"
-                "`/deployappform <job>` — Deploy an application form to the public server.\n"
-                "`/hrlogs [reviewer]` — View HR application decision logs.\n"
-                "`/sethrchannel` — Set the current channel as the HR log channel."
+            commands_list = [
+                "`/setupmodmail` → Setup modmail system.",
+                "`DM the bot` → Open a support ticket.",
+                "`Claim Button` → Claim a ticket.",
+                "`Close Button` → Close a ticket.",
+            ]
+
+            embed.add_field(
+                name="Commands",
+                value="\n".join(commands_list),
+                inline=False
             )
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        # =====================================================
+        # UTILITY
+        # =====================================================
+
+        elif category == "Utility":
+
+            embed.title = "⚙️ Utility Commands"
+
+            embed.description = (
+                "General server utility commands."
+            )
+
+            commands_list = [
+                "`/sticky` → Create sticky messages.",
+                "`/unsticky` → Remove sticky messages.",
+                "`/setwelcome` → Configure welcome messages.",
+                "`/setleave` → Configure leave messages.",
+            ]
+
+            embed.add_field(
+                name="Commands",
+                value="\n".join(commands_list),
+                inline=False
+            )
+
+        # =====================================================
+        # STAFF
+        # =====================================================
+
+        elif category == "Staff":
+
+            embed.title = "👥 Staff Commands"
+
+            embed.description = (
+                "Staff management and quota commands."
+            )
+
+            commands_list = [
+                "`/setdepartment` → Assign departments.",
+                "`/removedepartment` → Remove department.",
+                "`/addrank` → Create staff rank.",
+                "`/addduty` → Add rank duties.",
+                "`/poststaffdropdown` → Post rank menu.",
+                "`/deployquotamatrix` → Deploy quota dashboard.",
+            ]
+
+            embed.add_field(
+                name="Commands",
+                value="\n".join(commands_list),
+                inline=False
+            )
+
+        embed.set_footer(
+            text=f"Requested by {interaction.user}",
+            icon_url=interaction.user.display_avatar.url
+        )
+
+        await interaction.response.edit_message(
+            embed=embed,
+            view=self.view
+        )
 
 
-class HelpDropdownView(discord.ui.View):
+class HelpView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
+
         self.add_item(HelpDropdown())
 
-
-# ---------------------------------------------------------------------------
-# Cog
-# ---------------------------------------------------------------------------
 
 class HelpCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    # =========================================================
+    # /help
+    # =========================================================
+
     @app_commands.command(
-        name="helpme",
-        description="Open the interactive Bolt command directory.",
+        name="help",
+        description="View all available bot commands."
     )
-    async def help_command(self, interaction: discord.Interaction):
+    async def help_command(
+        self,
+        interaction: discord.Interaction
+    ):
+
         embed = discord.Embed(
-            title="⚡ Bolt — Command Directory",
+            title="🤖 Bot Help Menu",
             description=(
-                "Welcome to **Bolt**, your all-in-one multi-server management bot.\n\n"
-                "Use the dropdown menu below to browse commands by category."
+                "Welcome to the help menu.\n\n"
+                "Use the dropdown below to browse command categories."
             ),
-            color=discord.Color.gold(),
+            color=discord.Color.blurple()
         )
+
+        embed.add_field(
+            name="📚 Categories",
+            value=(
+                "🛡️ Moderation\n"
+                "📩 Modmail\n"
+                "⚙️ Utility\n"
+                "👥 Staff"
+            ),
+            inline=False
+        )
+
         embed.set_thumbnail(
-            url=self.bot.user.display_avatar.url if self.bot.user else None
+            url=interaction.guild.icon.url
+            if interaction.guild.icon
+            else discord.Embed.Empty
         )
-        embed.set_footer(text="Bolt Multi-Server Bot — Authorized Access Only")
+
+        embed.set_footer(
+            text=f"{interaction.guild.name}",
+            icon_url=interaction.guild.icon.url
+            if interaction.guild.icon
+            else None
+        )
 
         await interaction.response.send_message(
-            embed=embed, view=HelpDropdownView(), ephemeral=True
+            embed=embed,
+            view=HelpView(),
+            ephemeral=False
         )
 
 
 async def setup(bot):
-    # Disable the default prefix help command to avoid conflicts
-    if bot.help_command:
-        bot.help_command = None
     await bot.add_cog(HelpCog(bot))
