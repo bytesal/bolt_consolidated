@@ -56,6 +56,12 @@ class HelpDropdown(discord.ui.Select):
             ),
 
             discord.SelectOption(
+                label="Staff Teams",
+                emoji="📂",
+                description="Dynamic staff department system."
+            ),
+
+            discord.SelectOption(
                 label="AutoMod",
                 emoji="🤖",
                 description="Automatic moderation system."
@@ -286,6 +292,33 @@ class HelpDropdown(discord.ui.Select):
             )
 
         # =====================================================
+        # STAFF TEAMS
+        # =====================================================
+
+        elif category == "Staff Teams":
+
+            embed.title = "📂 Staff Team Commands"
+
+            embed.description = (
+                "Dynamic staff department system."
+            )
+
+            commands_list = [
+
+                "`/createteam` → Create a staff team.",
+                "`/addmember` → Add a member to a team.",
+                "`/removemember` → Remove a member from a team.",
+                "`/addresponsibility` → Add responsibilities to a team.",
+                "`/poststaffpanel` → Deploy the public staff panel.",
+            ]
+
+            embed.add_field(
+                name="Available Commands",
+                value="\n".join(commands_list),
+                inline=False
+            )
+
+        # =====================================================
         # AUTOMOD
         # =====================================================
 
@@ -499,6 +532,7 @@ class HelpCog(commands.Cog):
                 "📈 Leveling\n"
                 "⚙️ Utility\n"
                 "👥 Staff\n"
+                "📂 Staff Teams\n"
                 "🤖 AutoMod\n"
                 "📊 Analytics\n"
                 "🔗 Server Linking\n"
@@ -519,6 +553,7 @@ class HelpCog(commands.Cog):
                 "• Linked Server Infrastructure\n"
                 "• Persistent Systems\n"
                 "• Professional Modmail\n"
+                "• Dynamic Staff Teams\n"
                 "• Staff Analytics\n"
                 "• Advanced AutoMod"
 
