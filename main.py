@@ -27,6 +27,31 @@ sys.path.insert(0, BASE_DIR)
 load_dotenv()
 
 # =========================================================
+# Bot Class Definition
+# =========================================================
+
+class BoltBot(commands.Bot):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    async def setup_hook(self):
+        # تحميل الـ Cogs من المجلد ديناميكياً
+        cogs_dir = os.path.join(BASE_DIR, "cogs")
+        if os.path.exists(cogs_dir):
+            for filename in os.listdir(cogs_dir):
+                if filename.endswith(".py") and not filename.startswith("__"):
+                    cog_name = filename[:-3]
+                    try:
+                        await self.load_extension(f"cogs.{cog_name}")
+                        print(f"[Extension] Loaded cog: cogs.{cog_name}")
+                    except Exception as e:
+                        print(f"[Extension Fail] Error loading cogs.{cog_name}: {e}")
+        
+        # مزامنة الأوامر
+        await self.tree.sync()
+        print("✅ Slash commands synced automatically.")
+
+# =========================================================
 # Web Server (Render Keep Alive)
 # =========================================================
 
@@ -68,23 +93,11 @@ async def start_web_server():
 
 async def get_prefix(bot, message):
 
-    # =====================================================
-    # Developer Prefix Override
-    # =====================================================
-
     if message.author.id in bot.DEVELOPER_IDS:
         return "!"
 
-    # =====================================================
-    # DM Prefix
-    # =====================================================
-
     if not message.guild:
         return "!"
-
-    # =====================================================
-    # Database Prefix Lookup
-    # =====================================================
 
     for cog_name in [
         "DatabaseCog",
@@ -109,16 +122,12 @@ async def get_prefix(bot, message):
     return "!"
 
 # =========================================================
-# Discord Intents
+# Bot Initialization
 # =========================================================
 
 intents = discord.Intents.all()
 
-# =========================================================
-# Bot Initialization
-# =========================================================
-
-bot = commands.Bot(
+bot = BoltBot(
     command_prefix=get_prefix,
     intents=intents,
     help_command=None
@@ -152,10 +161,6 @@ print(
 @bot.check
 async def global_blacklist_check(ctx):
 
-    # ============================================
-    # Developers bypass blacklist
-    # ============================================
-
     if ctx.author.id in bot.DEVELOPER_IDS:
         return True
 
@@ -163,10 +168,6 @@ async def global_blacklist_check(ctx):
 
     if not db_cog:
         return True
-
-    # ============================================
-    # User Blacklist
-    # ============================================
 
     user_blacklist = await db_cog.blacklist.find_one({
 
@@ -177,10 +178,6 @@ async def global_blacklist_check(ctx):
 
     if user_blacklist:
         return False
-
-    # ============================================
-    # Guild Blacklist
-    # ============================================
 
     if ctx.guild:
 
@@ -194,9 +191,7 @@ async def global_blacklist_check(ctx):
         if guild_blacklist:
 
             try:
-
                 await ctx.guild.leave()
-
             except Exception:
                 pass
 
@@ -212,147 +207,42 @@ async def global_blacklist_check(ctx):
 async def on_ready():
 
     print("==================================================")
-
-    print(
-        f"[Initialization] Logged in as: "
-        f"{bot.user.name} ({bot.user.id})"
-    )
-
-    print(
-        "[Initialization] "
-        "System architecture loaded cleanly."
-    )
-
+    print(f"[Initialization] Logged in as: {bot.user.name} ({bot.user.id})")
+    print("[Initialization] System architecture loaded cleanly.")
     print("==================================================")
 
-    # =====================================================
-    # Dynamic Presence
-    # =====================================================
-
     guild_count = len(bot.guilds)
-
-    activity_text = (
-        f"over {guild_count} servers | Bolt Engine"
-    )
-
+    activity_text = f"over {guild_count} servers | Bolt Engine"
     await bot.change_presence(
-
         status=discord.Status.online,
-
         activity=discord.Activity(
             type=discord.ActivityType.watching,
             name=activity_text
         ),
     )
 
-    print(
-        f"[Presence] Dynamic activity set to: "
-        f"Watching {activity_text}"
-    )
-
-    # =====================================================
-    # Slash Command Sync
-    # =====================================================
-
-    try:
-
-        print(
-            "[Sync] Initializing "
-            "application commands sync..."
-        )
-
-        synced = await bot.tree.sync()
-
-        print(
-            f"[Sync Success] "
-            f"Synchronized "
-            f"{len(synced)} slash commands globally."
-        )
-
-    except discord.HTTPException as http_err:
-
-        print(
-            f"[Sync Fail] "
-            f"Discord API HTTP error during auto-sync: "
-            f"{http_err}"
-        )
-
-    except Exception as e:
-
-        print(
-            f"[Sync Fail] "
-            f"Unexpected error during auto-sync: {e}"
-        )
-
-    # =====================================================
     # Restore Persistent Views
-    # =====================================================
-
     try:
-
         bot.add_view(HelpView())
-
-        bot.add_view(
-            TicketCategoryView(bot)
-        )
-
-        bot.add_view(
-            OpenTicketButton()
-        )
-
-        print(
-            "[Views] Persistent views restored successfully."
-        )
-
+        bot.add_view(TicketCategoryView(bot))
+        bot.add_view(OpenTicketButton())
+        print("[Views] Persistent views restored successfully.")
     except Exception as e:
+        print(f"[Views Fail] Failed restoring persistent views: {e}")
 
-        print(
-            f"[Views Fail] "
-            f"Failed restoring persistent views: {e}"
-        )
-
-    # =====================================================
     # Restore Database Persistent Views
-    # =====================================================
-
-    for cog_name in [
-        "DatabaseCog",
-        "DatabaseHandler",
-        "Database"
-    ]:
-
+    for cog_name in ["DatabaseCog", "DatabaseHandler", "Database"]:
         db_cog = bot.get_cog(cog_name)
-
-        if (
-            db_cog
-            and hasattr(db_cog, "restore_persistent_views")
-        ):
-
+        if db_cog and hasattr(db_cog, "restore_persistent_views"):
             try:
-
                 await db_cog.restore_persistent_views()
-
-                print(
-                    "[Database] "
-                    "Persistent database views restored."
-                )
-
+                print("[Database] Persistent database views restored.")
             except Exception as e:
-
-                print(
-                    f"[Database Fail] "
-                    f"Persistent view restoration failed: {e}"
-                )
-
+                print(f"[Database Fail] Persistent view restoration failed: {e}")
             break
 
     print("==================================================")
-
-    print(
-        "[System Ready] "
-        "Bolt Engine is fully operational."
-    )
-
+    print("[System Ready] Bolt Engine is fully operational.")
     print("==================================================")
 
 # =========================================================
@@ -361,11 +251,8 @@ async def on_ready():
 
 @bot.event
 async def on_command_error(ctx, error):
-
-    # Ignore unknown prefix commands
     if isinstance(error, commands.CommandNotFound):
         return
-
     raise error
 
 # =========================================================
@@ -373,89 +260,15 @@ async def on_command_error(ctx, error):
 # =========================================================
 
 async def main():
-
     async with bot:
-
-        # =================================================
-        # Load All Cogs
-        # =================================================
-
-        cogs_dir = os.path.join(BASE_DIR, "cogs")
-
-        if os.path.exists(cogs_dir):
-
-            filenames = sorted(
-                os.listdir(cogs_dir)
-            )
-
-            for filename in filenames:
-
-                if (
-                    filename.endswith(".py")
-                    and not filename.startswith("__")
-                ):
-
-                    cog_name = filename[:-3]
-
-                    try:
-
-                        await bot.load_extension(
-                            f"cogs.{cog_name}"
-                        )
-
-                        print(
-                            f"[Extension] Loaded cog: "
-                            f"cogs.{cog_name}"
-                        )
-
-                    except Exception as e:
-
-                        print(
-                            f"[Extension Fail] "
-                            f"Error loading cogs.{cog_name}: {e}"
-                        )
-
-        else:
-
-            print(
-                f"[Critical Error] "
-                f"Cogs directory not found at: "
-                f"{cogs_dir}"
-            )
-
-        # =================================================
         # Start Web Server
-        # =================================================
-
         await start_web_server()
 
-        # =================================================
-        # Load Token
-        # =================================================
-
-        token = (
-            os.getenv("BOT_TOKEN")
-            or os.getenv("DISCORD_TOKEN")
-        )
-
+        token = os.getenv("BOT_TOKEN") or os.getenv("DISCORD_TOKEN")
         if not token:
-
-            raise ValueError(
-                "CRITICAL ERROR: "
-                "Neither BOT_TOKEN nor DISCORD_TOKEN "
-                "found in environment variables."
-            )
-
-        # =================================================
-        # Start Bot
-        # =================================================
+            raise ValueError("CRITICAL ERROR: No token found.")
 
         await bot.start(token)
 
-# =========================================================
-# Entrypoint
-# =========================================================
-
 if __name__ == "__main__":
-
     asyncio.run(main())
