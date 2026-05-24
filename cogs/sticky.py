@@ -1,3 +1,4 @@
+import os
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -14,13 +15,16 @@ class StickyCog(commands.Cog):
         return self.locks[channel_id]
 
     @app_commands.command(name="sticky", description="Affix dynamic notice text block down bottom stream boundary layers.")
+    @app_commands.describe(notice_content="The structured text notice payload to stick to the bottom of the viewport.")
     async def sticky(self, interaction: discord.Interaction, notice_content: str):
         if not interaction.user.guild_permissions.manage_messages and interaction.user.id not in self.bot.DEVELOPER_IDS:
             return await interaction.response.send_message("❌ Privilege Metric Verification Failed.", ephemeral=True)
             
         await interaction.response.defer(ephemeral=True)
         db_cog = self.bot.get_cog("DatabaseCog")
-        
+        if not db_cog:
+            return await interaction.followup.send("❌ Core DB Connection Unavailable.", ephemeral=True)
+            
         await db_cog.sticky_messages.update_one(
             {"_id": str(interaction.channel_id)},
             {"$set": {"content": notice_content, "last_msg_id": None}},
@@ -35,7 +39,9 @@ class StickyCog(commands.Cog):
             
         await interaction.response.defer(ephemeral=True)
         db_cog = self.bot.get_cog("DatabaseCog")
-        
+        if not db_cog:
+            return await interaction.followup.send("❌ Core DB Connection Unavailable.", ephemeral=True)
+            
         await db_cog.sticky_messages.delete_one({"_id": str(interaction.channel_id)})
         await interaction.followup.send("✅ Sticky properties dropped cleanly from target region.", ephemeral=True)
 
@@ -48,12 +54,11 @@ class StickyCog(commands.Cog):
         if not db_cog:
             return
 
-        doc = await db_cog.sticky_messages.find_one({"_id": str(message.channel.id)})
-        if not doc:
-            return
-
         async with self.get_lock(str(message.channel.id)):
-            # Safely attempt pruning historical system structures
+            doc = await db_cog.sticky_messages.find_one({"_id": str(message.channel.id)})
+            if not doc:
+                return
+
             if doc.get("last_msg_id"):
                 try:
                     old_msg = await message.channel.fetch_message(int(doc["last_msg_id"]))
