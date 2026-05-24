@@ -1,231 +1,719 @@
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
+from datetime import datetime, timedelta
 import uuid
-import datetime
+
+
+WARNING_THRESHOLDS = {
+    3: ("timeout", 60 * 60),        # 1 hour
+    5: ("mute", 60 * 60 * 24),      # 1 day
+    7: ("ban", None),               # permanent
+}
 
 
 class ModerationCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.temp_punishment_loop.start()
 
-    # ------------------------------------------------------------------
-    # Internal permission check
-    # ------------------------------------------------------------------
+    def cog_unload(self):
+        self.temp_punishment_loop.cancel()
 
-    def has_mod_clearance(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id in self.bot.DEVELOPER_IDS:
-            return True
-        return interaction.user.guild_permissions.moderate_members
+    # =========================================================
+    # Permission Checks
+    # =========================================================
 
-    # ------------------------------------------------------------------
-    # /warn
-    # ------------------------------------------------------------------
+    def has_mod_perms(self, interaction: discord.Interaction):
+        return (
+            interaction.user.guild_permissions.moderate_members
+            or interaction.user.guild_permissions.manage_messages
+            or interaction.user.guild_permissions.ban_members
+            or interaction.user.guild_permissions.kick_members
+            or interaction.user.id in self.bot.DEVELOPER_IDS
+        )
+
+    # =========================================================
+    # Utilities
+    # =========================================================
+
+    async def generate_case(self):
+        return str(uuid.uuid4())[:8].upper()
+
+    async def create_case(
+        self,
+        interaction,
+        action,
+        target,
+        reason,
+        evidence=None,
+        duration=None,
+    ):
+        db_cog = self.bot.get_cog("DatabaseCog")
+
+        case_id = await self.generate_case()
+
+        await db_cog.mod_cases.insert_one({
+            "case_id": case_id,
+            "guild_id": str(interaction.guild.id),
+            "action": action,
+            "target_id": str(target.id),
+            "target_name": target.name,
+            "issuer_id": str(interaction.user.id),
+            "issuer_name": interaction.user.name,
+            "reason": reason,
+            "evidence": evidence,
+            "duration": duration,
+            "timestamp": datetime.utcnow(),
+            "active": True
+        })
+
+        await db_cog.mod_users.update_one(
+            {"_id": str(target.id)},
+            {
+                "$inc": {
+                    "total_cases": 1
+                }
+            },
+            upsert=True
+        )
+
+        return case_id
+
+    async def send_dm(
+        self,
+        target,
+        guild,
+        action,
+        reason,
+        case_id,
+        moderator,
+        evidence=None,
+        warning_count=None,
+        duration=None,
+    ):
+        try:
+            embed = discord.Embed(
+                title=f"Moderation Action • {action.upper()}",
+                color=discord.Color.red(),
+                timestamp=datetime.utcnow()
+            )
+
+            embed.add_field(name="Server", value=guild.name, inline=False)
+            embed.add_field(name="Moderator", value=moderator.name, inline=False)
+            embed.add_field(name="Reason", value=reason, inline=False)
+            embed.add_field(name="Case ID", value=f"`#{case_id}`", inline=False)
+
+            if duration:
+                embed.add_field(name="Duration", value=duration, inline=False)
+
+            if warning_count is not None:
+                embed.add_field(
+                    name="Warning Count",
+                    value=str(warning_count),
+                    inline=False
+                )
+
+            if evidence:
+                embed.add_field(
+                    name="Evidence",
+                    value=evidence,
+                    inline=False
+                )
+
+            await target.send(embed=embed)
+
+        except Exception:
+            pass
+
+    async def log_action(
+        self,
+        interaction,
+        action,
+        target,
+        reason,
+        case_id,
+        evidence=None,
+        duration=None,
+    ):
+        db_cog = self.bot.get_cog("DatabaseCog")
+
+        config = await db_cog.settings.find_one({
+            "_id": f"modlog_{interaction.guild.id}"
+        })
+
+        if not config:
+            return
+
+        channel = interaction.guild.get_channel(int(config["value"]))
+
+        if not channel:
+            return
+
+        embed = discord.Embed(
+            title=f"🛡️ Moderation Action • {action.upper()}",
+            color=discord.Color.orange(),
+            timestamp=datetime.utcnow()
+        )
+
+        embed.add_field(
+            name="User",
+            value=f"{target.mention} (`{target.id}`)",
+            inline=False
+        )
+
+        embed.add_field(
+            name="Moderator",
+            value=f"{interaction.user.mention}",
+            inline=False
+        )
+
+        embed.add_field(
+            name="Reason",
+            value=reason,
+            inline=False
+        )
+
+        embed.add_field(
+            name="Case ID",
+            value=f"`#{case_id}`",
+            inline=True
+        )
+
+        if duration:
+            embed.add_field(
+                name="Duration",
+                value=duration,
+                inline=True
+            )
+
+        if evidence:
+            embed.add_field(
+                name="Evidence",
+                value=evidence,
+                inline=False
+            )
+
+        await channel.send(embed=embed)
+
+    async def handle_warning_escalation(self, interaction, target, warnings):
+        if warnings not in WARNING_THRESHOLDS:
+            return
+
+        punishment, duration = WARNING_THRESHOLDS[warnings]
+
+        reason = f"Automatic escalation after {warnings} warnings."
+
+        if punishment == "timeout":
+            until = datetime.utcnow() + timedelta(seconds=duration)
+
+            await target.timeout(
+                until,
+                reason=reason
+            )
+
+        elif punishment == "ban":
+            await interaction.guild.ban(
+                target,
+                reason=reason
+            )
+
+    # =========================================================
+    # CONFIG
+    # =========================================================
+
+    @app_commands.command(
+        name="setmodlog",
+        description="Set the moderation log channel."
+    )
+    async def set_modlog(
+        self,
+        interaction: discord.Interaction,
+        channel: discord.TextChannel
+    ):
+        if not interaction.user.guild_permissions.administrator:
+            return await interaction.response.send_message(
+                "❌ Administrator permission required.",
+                ephemeral=True
+            )
+
+        db_cog = self.bot.get_cog("DatabaseCog")
+
+        await db_cog.settings.update_one(
+            {"_id": f"modlog_{interaction.guild.id}"},
+            {"$set": {"value": str(channel.id)}},
+            upsert=True
+        )
+
+        await interaction.response.send_message(
+            f"✅ Mod-log channel set to {channel.mention}"
+        )
+
+    # =========================================================
+    # WARN
+    # =========================================================
 
     @app_commands.command(
         name="warn",
-        description="Issue a formal warning to a server member.",
-    )
-    @app_commands.describe(
-        target="The member to warn.",
-        reason="The reason for the warning.",
-        evidence="Optional URL linking to evidence (screenshot, etc.).",
+        description="Warn a member."
     )
     async def warn(
         self,
         interaction: discord.Interaction,
         target: discord.Member,
         reason: str,
-        evidence: str = None,
+        evidence: str = None
     ):
-        if not self.has_mod_clearance(interaction):
+        if not self.has_mod_perms(interaction):
             return await interaction.response.send_message(
-                "❌ You do not have permission to issue warnings.", ephemeral=True
+                "❌ Missing permissions.",
+                ephemeral=True
             )
 
         await interaction.response.defer(ephemeral=True)
 
         db_cog = self.bot.get_cog("DatabaseCog")
-        if not db_cog:
-            return await interaction.followup.send("❌ Database connection unavailable.")
 
-        case_id = str(uuid.uuid4())[:8].upper()
-
-        await db_cog.mod_cases.insert_one(
-            {
-                "case_id":     case_id,
-                "action":      "warn",
-                "target_id":   str(target.id),
-                "target_name": target.name,
-                "issuer_id":   str(interaction.user.id),
-                "issuer_name": interaction.user.name,
-                "reason":      reason,
-                "evidence":    evidence,
-                "timestamp":   datetime.datetime.utcnow(),
-            }
-        )
         await db_cog.mod_users.update_one(
             {"_id": str(target.id)},
             {"$inc": {"warnings": 1}},
-            upsert=True,
+            upsert=True
         )
 
-        # Log quota activity for the issuing moderator
-        quota_cog = self.bot.get_cog("StaffQuotaCog")
-        if quota_cog and hasattr(quota_cog, "log_quota_activity"):
-            await quota_cog.log_quota_activity(interaction.user.id, "weekly_mod_actions")
+        profile = await db_cog.mod_users.find_one({
+            "_id": str(target.id)
+        })
 
-        # Notify the warned member via DM
-        try:
-            embed = discord.Embed(
-                title="⚠️ Warning Issued",
-                color=discord.Color.yellow(),
-            )
-            embed.add_field(name="Server", value=interaction.guild.name, inline=False)
-            embed.add_field(name="Reason", value=reason, inline=False)
-            embed.add_field(name="Case ID", value=f"`#{case_id}`", inline=True)
-            if evidence:
-                embed.add_field(name="Evidence", value=evidence, inline=False)
-            await target.send(embed=embed)
-        except Exception:
-            pass  # DMs may be disabled — non-critical
+        warnings = profile.get("warnings", 0)
+
+        case_id = await self.create_case(
+            interaction,
+            "warn",
+            target,
+            reason,
+            evidence
+        )
+
+        await self.send_dm(
+            target,
+            interaction.guild,
+            "Warn",
+            reason,
+            case_id,
+            interaction.user,
+            evidence,
+            warnings
+        )
+
+        await self.log_action(
+            interaction,
+            "warn",
+            target,
+            reason,
+            case_id,
+            evidence
+        )
+
+        await self.handle_warning_escalation(
+            interaction,
+            target,
+            warnings
+        )
 
         await interaction.followup.send(
-            f"✅ Warning issued to **{target.name}** — Case `#{case_id}`"
+            f"✅ {target.mention} warned successfully.\nCase: `#{case_id}`"
         )
 
-    # ------------------------------------------------------------------
-    # /adwarn
-    # ------------------------------------------------------------------
+    # =========================================================
+    # TIMEOUT
+    # =========================================================
 
     @app_commands.command(
-        name="adwarn",
-        description="Issue an advertising policy warning to a server member.",
+        name="timeout",
+        description="Timeout a member."
     )
-    @app_commands.describe(
-        target="The member to warn.",
-        reason="The reason for the advertising warning.",
-        evidence="Optional URL linking to evidence.",
+    async def timeout(
+        self,
+        interaction: discord.Interaction,
+        target: discord.Member,
+        minutes: int,
+        reason: str,
+        evidence: str = None
+    ):
+        if not self.has_mod_perms(interaction):
+            return await interaction.response.send_message(
+                "❌ Missing permissions.",
+                ephemeral=True
+            )
+
+        until = datetime.utcnow() + timedelta(minutes=minutes)
+
+        await target.timeout(
+            until,
+            reason=reason
+        )
+
+        case_id = await self.create_case(
+            interaction,
+            "timeout",
+            target,
+            reason,
+            evidence,
+            minutes * 60
+        )
+
+        await self.send_dm(
+            target,
+            interaction.guild,
+            "Timeout",
+            reason,
+            case_id,
+            interaction.user,
+            evidence,
+            f"{minutes} minutes"
+        )
+
+        await self.log_action(
+            interaction,
+            "timeout",
+            target,
+            reason,
+            case_id,
+            evidence,
+            f"{minutes} minutes"
+        )
+
+        await interaction.response.send_message(
+            f"✅ {target.mention} timed out for {minutes} minutes."
+        )
+
+    # =========================================================
+    # KICK
+    # =========================================================
+
+    @app_commands.command(
+        name="kick",
+        description="Kick a member."
     )
-    async def adwarn(
+    async def kick(
         self,
         interaction: discord.Interaction,
         target: discord.Member,
         reason: str,
-        evidence: str = None,
+        evidence: str = None
     ):
-        if not self.has_mod_clearance(interaction):
+        if not interaction.user.guild_permissions.kick_members:
             return await interaction.response.send_message(
-                "❌ You do not have permission to issue warnings.", ephemeral=True
+                "❌ Missing permissions.",
+                ephemeral=True
             )
 
-        await interaction.response.defer(ephemeral=True)
-
-        db_cog = self.bot.get_cog("DatabaseCog")
-        if not db_cog:
-            return await interaction.followup.send("❌ Database connection unavailable.")
-
-        case_id = str(uuid.uuid4())[:8].upper()
-
-        await db_cog.mod_cases.insert_one(
-            {
-                "case_id":     case_id,
-                "action":      "adwarn",
-                "target_id":   str(target.id),
-                "target_name": target.name,
-                "issuer_id":   str(interaction.user.id),
-                "issuer_name": interaction.user.name,
-                "reason":      reason,
-                "evidence":    evidence,
-                "timestamp":   datetime.datetime.utcnow(),
-            }
-        )
-        await db_cog.mod_users.update_one(
-            {"_id": str(target.id)},
-            {"$inc": {"adwarnings": 1}},
-            upsert=True,
+        case_id = await self.create_case(
+            interaction,
+            "kick",
+            target,
+            reason,
+            evidence
         )
 
-        # Log quota activity
-        quota_cog = self.bot.get_cog("StaffQuotaCog")
-        if quota_cog and hasattr(quota_cog, "log_quota_activity"):
-            await quota_cog.log_quota_activity(
-                interaction.user.id, "weekly_adwarns_executed"
+        await self.send_dm(
+            target,
+            interaction.guild,
+            "Kick",
+            reason,
+            case_id,
+            interaction.user,
+            evidence
+        )
+
+        await target.kick(reason=reason)
+
+        await self.log_action(
+            interaction,
+            "kick",
+            target,
+            reason,
+            case_id,
+            evidence
+        )
+
+        await interaction.response.send_message(
+            f"✅ {target} kicked successfully."
+        )
+
+    # =========================================================
+    # BAN
+    # =========================================================
+
+    @app_commands.command(
+        name="ban",
+        description="Ban a member."
+    )
+    async def ban(
+        self,
+        interaction: discord.Interaction,
+        target: discord.Member,
+        reason: str,
+        evidence: str = None
+    ):
+        if not interaction.user.guild_permissions.ban_members:
+            return await interaction.response.send_message(
+                "❌ Missing permissions.",
+                ephemeral=True
             )
 
-        # Notify the warned member via DM
-        try:
-            embed = discord.Embed(
-                title="🚫 Advertising Policy Warning",
-                color=discord.Color.orange(),
-            )
-            embed.add_field(name="Server", value=interaction.guild.name, inline=False)
-            embed.add_field(name="Reason", value=reason, inline=False)
-            embed.add_field(name="Case ID", value=f"`#{case_id}`", inline=True)
-            if evidence:
-                embed.add_field(name="Evidence", value=evidence, inline=False)
-            await target.send(embed=embed)
-        except Exception:
-            pass
-
-        await interaction.followup.send(
-            f"✅ Advertising warning issued to **{target.name}** — Case `#{case_id}`"
+        case_id = await self.create_case(
+            interaction,
+            "ban",
+            target,
+            reason,
+            evidence
         )
 
-    # ------------------------------------------------------------------
-    # /history
-    # ------------------------------------------------------------------
+        await self.send_dm(
+            target,
+            interaction.guild,
+            "Ban",
+            reason,
+            case_id,
+            interaction.user,
+            evidence
+        )
+
+        await interaction.guild.ban(
+            target,
+            reason=reason
+        )
+
+        await self.log_action(
+            interaction,
+            "ban",
+            target,
+            reason,
+            case_id,
+            evidence
+        )
+
+        await interaction.response.send_message(
+            f"✅ {target} banned successfully."
+        )
+
+    # =========================================================
+    # SOFTBAN
+    # =========================================================
+
+    @app_commands.command(
+        name="softban",
+        description="Softban a member."
+    )
+    async def softban(
+        self,
+        interaction: discord.Interaction,
+        target: discord.Member,
+        reason: str,
+        evidence: str = None
+    ):
+        if not interaction.user.guild_permissions.ban_members:
+            return await interaction.response.send_message(
+                "❌ Missing permissions.",
+                ephemeral=True
+            )
+
+        case_id = await self.create_case(
+            interaction,
+            "softban",
+            target,
+            reason,
+            evidence
+        )
+
+        await self.send_dm(
+            target,
+            interaction.guild,
+            "Softban",
+            reason,
+            case_id,
+            interaction.user,
+            evidence
+        )
+
+        await interaction.guild.ban(
+            target,
+            reason=reason,
+            delete_message_days=1
+        )
+
+        await interaction.guild.unban(target)
+
+        await self.log_action(
+            interaction,
+            "softban",
+            target,
+            reason,
+            case_id,
+            evidence
+        )
+
+        await interaction.response.send_message(
+            f"✅ {target} softbanned successfully."
+        )
+
+    # =========================================================
+    # PURGE
+    # =========================================================
+
+    @app_commands.command(
+        name="purge",
+        description="Delete messages."
+    )
+    async def purge(
+        self,
+        interaction: discord.Interaction,
+        amount: int
+    ):
+        if not interaction.user.guild_permissions.manage_messages:
+            return await interaction.response.send_message(
+                "❌ Missing permissions.",
+                ephemeral=True
+            )
+
+        deleted = await interaction.channel.purge(limit=amount)
+
+        await interaction.response.send_message(
+            f"✅ Deleted {len(deleted)} messages.",
+            ephemeral=True
+        )
+
+    # =========================================================
+    # LOCK
+    # =========================================================
+
+    @app_commands.command(
+        name="lock",
+        description="Lock the channel."
+    )
+    async def lock(self, interaction: discord.Interaction):
+        overwrite = interaction.channel.overwrites_for(
+            interaction.guild.default_role
+        )
+
+        overwrite.send_messages = False
+
+        await interaction.channel.set_permissions(
+            interaction.guild.default_role,
+            overwrite=overwrite
+        )
+
+        await interaction.response.send_message(
+            "🔒 Channel locked."
+        )
+
+    # =========================================================
+    # UNLOCK
+    # =========================================================
+
+    @app_commands.command(
+        name="unlock",
+        description="Unlock the channel."
+    )
+    async def unlock(self, interaction: discord.Interaction):
+        overwrite = interaction.channel.overwrites_for(
+            interaction.guild.default_role
+        )
+
+        overwrite.send_messages = True
+
+        await interaction.channel.set_permissions(
+            interaction.guild.default_role,
+            overwrite=overwrite
+        )
+
+        await interaction.response.send_message(
+            "🔓 Channel unlocked."
+        )
+
+    # =========================================================
+    # SLOWMODE
+    # =========================================================
+
+    @app_commands.command(
+        name="slowmode",
+        description="Set slowmode."
+    )
+    async def slowmode(
+        self,
+        interaction: discord.Interaction,
+        seconds: int
+    ):
+        await interaction.channel.edit(
+            slowmode_delay=seconds
+        )
+
+        await interaction.response.send_message(
+            f"🐢 Slowmode set to {seconds} seconds."
+        )
+
+    # =========================================================
+    # HISTORY
+    # =========================================================
 
     @app_commands.command(
         name="history",
-        description="View the moderation history of a user.",
+        description="View moderation history."
     )
-    @app_commands.describe(target="The user whose history you want to view.")
-    async def history(self, interaction: discord.Interaction, target: discord.User):
-        if not self.has_mod_clearance(interaction):
+    async def history(
+        self,
+        interaction: discord.Interaction,
+        target: discord.User
+    ):
+        if not self.has_mod_perms(interaction):
             return await interaction.response.send_message(
-                "❌ You do not have permission to view moderation history.", ephemeral=True
+                "❌ Missing permissions.",
+                ephemeral=True
             )
 
-        await interaction.response.defer(ephemeral=True)
-
         db_cog = self.bot.get_cog("DatabaseCog")
-        if not db_cog:
-            return await interaction.followup.send("❌ Database connection unavailable.")
 
-        profile = (
-            await db_cog.mod_users.find_one({"_id": str(target.id)})
-            or {"warnings": 0, "adwarnings": 0}
-        )
-        cases = (
-            await db_cog.mod_cases.find({"target_id": str(target.id)})
-            .sort("timestamp", -1)
-            .limit(5)
-            .to_list(None)
-        )
+        cases = await db_cog.mod_cases.find({
+            "target_id": str(target.id)
+        }).sort(
+            "timestamp",
+            -1
+        ).limit(10).to_list(None)
+
+        if not cases:
+            return await interaction.response.send_message(
+                "No moderation history found."
+            )
 
         embed = discord.Embed(
-            title=f"Moderation History — {target.name}",
-            color=discord.Color.blue(),
-        )
-        embed.set_thumbnail(url=target.display_avatar.url)
-        embed.add_field(
-            name="Warnings", value=str(profile.get("warnings", 0)), inline=True
-        )
-        embed.add_field(
-            name="Ad Warnings",
-            value=str(profile.get("adwarnings", 0)),
-            inline=True,
+            title=f"Moderation History • {target}",
+            color=discord.Color.blurple()
         )
 
         for case in cases:
             embed.add_field(
-                name=f"`#{case['case_id']}` — {case['action'].upper()}",
-                value=f"By: {case['issuer_name']} | Reason: {case['reason']}",
-                inline=False,
+                name=f"{case['action'].upper()} • #{case['case_id']}",
+                value=f"Reason: {case['reason']}",
+                inline=False
             )
 
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.response.send_message(
+            embed=embed,
+            ephemeral=True
+        )
+
+    # =========================================================
+    # TEMP LOOP
+    # =========================================================
+
+    @tasks.loop(minutes=1)
+    async def temp_punishment_loop(self):
+        pass
+
+    @temp_punishment_loop.before_loop
+    async def before_temp_loop(self):
+        await self.bot.wait_until_ready()
 
 
 async def setup(bot):
