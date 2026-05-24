@@ -1,4 +1,4 @@
-```python
+```python id="crossserver_moderation_complete"
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
@@ -43,9 +43,9 @@ class ModerationCog(commands.Cog):
         if not db_cog:
             return None, None
 
-        # ============================================
-        # If current guild is STAFF server
-        # ============================================
+        # =====================================================
+        # Staff Server Lookup
+        # =====================================================
 
         data = await db_cog.get_server_link(
             guild_id
@@ -61,11 +61,14 @@ class ModerationCog(commands.Cog):
                 int(data["public_guild_id"])
             )
 
-            return staff_guild, public_guild
+            return (
+                staff_guild,
+                public_guild
+            )
 
-        # ============================================
-        # If current guild is PUBLIC server
-        # ============================================
+        # =====================================================
+        # Public Server Lookup
+        # =====================================================
 
         data = await db_cog.get_link_by_public(
             guild_id
@@ -81,7 +84,10 @@ class ModerationCog(commands.Cog):
                 int(data["public_guild_id"])
             )
 
-            return staff_guild, public_guild
+            return (
+                staff_guild,
+                public_guild
+            )
 
         return None, None
 
@@ -90,7 +96,7 @@ class ModerationCog(commands.Cog):
         interaction: discord.Interaction
     ):
 
-        staff_guild, public_guild = await self.get_linked_servers(
+        staff_guild, _ = await self.get_linked_servers(
             interaction.guild.id
         )
 
@@ -105,10 +111,10 @@ class ModerationCog(commands.Cog):
     async def get_public_member(
         self,
         interaction: discord.Interaction,
-        target_id: int
+        user_id: int
     ):
 
-        staff_guild, public_guild = await self.get_linked_servers(
+        _, public_guild = await self.get_linked_servers(
             interaction.guild.id
         )
 
@@ -116,7 +122,7 @@ class ModerationCog(commands.Cog):
             return None
 
         return public_guild.get_member(
-            target_id
+            user_id
         )
 
     async def generate_case(self):
@@ -273,7 +279,7 @@ class ModerationCog(commands.Cog):
             "DatabaseCog"
         )
 
-        staff_guild, public_guild = await self.get_linked_servers(
+        staff_guild, _ = await self.get_linked_servers(
             interaction.guild.id
         )
 
@@ -432,7 +438,7 @@ class ModerationCog(commands.Cog):
     async def warn(
         self,
         interaction: discord.Interaction,
-        target: discord.Member,
+        target: discord.User,
         reason: str,
         evidence: str = None
     ):
@@ -548,7 +554,7 @@ class ModerationCog(commands.Cog):
     async def timeout(
         self,
         interaction: discord.Interaction,
-        target: discord.Member,
+        target: discord.User,
         minutes: int,
         reason: str,
         evidence: str = None
@@ -644,7 +650,7 @@ class ModerationCog(commands.Cog):
     async def ban(
         self,
         interaction: discord.Interaction,
-        target: discord.Member,
+        target: discord.User,
         reason: str,
         evidence: str = None
     ):
@@ -730,7 +736,7 @@ class ModerationCog(commands.Cog):
     async def kick(
         self,
         interaction: discord.Interaction,
-        target: discord.Member,
+        target: discord.User,
         reason: str,
         evidence: str = None
     ):
