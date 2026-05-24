@@ -324,20 +324,16 @@ class CoreCog(commands.Cog):
 
         try:
 
-            guild = interaction.guild
+            synced_global = await self.bot.tree.sync()
 
-            self.bot.tree.copy_global_to(
-                guild=guild
-            )
-
-            synced = await self.bot.tree.sync(
-                guild=guild
+            synced_guild = await self.bot.tree.sync(
+                guild=interaction.guild
             )
 
             await interaction.followup.send(
 
-                f"✅ Successfully synced "
-                f"`{len(synced)}` commands."
+                f"✅ Global Sync: `{len(synced_global)}` commands\n"
+                f"✅ Guild Sync: `{len(synced_guild)}` commands"
 
             )
 
@@ -345,7 +341,7 @@ class CoreCog(commands.Cog):
 
             await interaction.followup.send(
 
-                f"❌ Sync failed:\n`{e}`"
+                f"❌ Sync failed:\n```py\n{e}\n```"
 
             )
 
