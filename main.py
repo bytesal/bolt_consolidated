@@ -28,54 +28,125 @@ sys.path.insert(0, BASE_DIR)
 load_dotenv()
 
 # =========================================================
+# MAIN GUILD
+# =========================================================
+
+GUILD_ID = 123456789012345678
+
+# =========================================================
 # Bot Class Definition
 # =========================================================
 
 class BoltBot(commands.Bot):
+
     def __init__(self, *args, **kwargs):
+
         super().__init__(*args, **kwargs)
 
     async def setup_hook(self):
-        # تحميل الـ Cogs من المجلد ديناميكياً
-        cogs_dir = os.path.join(BASE_DIR, "cogs")
+
+        # =====================================================
+        # Load Cogs
+        # =====================================================
+
+        cogs_dir = os.path.join(
+            BASE_DIR,
+            "cogs"
+        )
+
         if os.path.exists(cogs_dir):
+
             for filename in os.listdir(cogs_dir):
-                if filename.endswith(".py") and not filename.startswith("__"):
+
+                if (
+                    filename.endswith(".py")
+                    and not filename.startswith("__")
+                ):
+
                     cog_name = filename[:-3]
+
                     try:
-                        await self.load_extension(f"cogs.{cog_name}")
-                        print(f"[Extension] Loaded cog: cogs.{cog_name}")
-                    except Exception as e:
-                        print(f"[Extension Fail] Error loading cogs.{cog_name}: {e}")
-        
-        # مزامنة الأوامر
-        await self.tree.sync()
-        print("✅ Slash commands synced automatically.")
+
+                        await self.load_extension(
+                            f"cogs.{cog_name}"
+                        )
+
+                        print(
+                            f"[Extension] Loaded cog: "
+                            f"cogs.{cog_name}"
+                        )
+
+                    except Exception:
+
+                        import traceback
+                        traceback.print_exc()
+
+        # =====================================================
+        # Instant Guild Sync
+        # =====================================================
+
+        guild = discord.Object(
+            id=GUILD_ID
+        )
+
+        synced = await self.tree.sync(
+            guild=guild
+        )
+
+        print(
+            f"✅ Synced {len(synced)} "
+            f"guild commands instantly."
+        )
 
 # =========================================================
 # Web Server (Flask Keep Alive)
 # =========================================================
 
-app = Flask('')
+app = Flask("")
 
-@app.route('/')
+@app.route("/")
 def home():
-    return "Bolt Multi-Server Engine is alive and responsive."
+
+    return (
+        "Bolt Multi-Server Engine "
+        "is alive and responsive."
+    )
 
 def run_flask():
-    port = int(os.getenv("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
+
+    port = int(
+        os.getenv(
+            "PORT",
+            8080
+        )
+    )
+
+    app.run(
+        host="0.0.0.0",
+        port=port
+    )
 
 def start_web_server():
-    t = Thread(target=run_flask)
+
+    t = Thread(
+        target=run_flask
+    )
+
     t.start()
-    print(f"[Web Engine] Flask server thread started.")
+
+    print(
+        "[Web Engine] Flask server "
+        "thread started."
+    )
 
 # =========================================================
 # Dynamic Prefix Resolver
 # =========================================================
 
-async def get_prefix(bot, message):
+async def get_prefix(
+    bot,
+    message
+):
 
     if message.author.id in bot.DEVELOPER_IDS:
         return "!"
@@ -84,16 +155,23 @@ async def get_prefix(bot, message):
         return "!"
 
     for cog_name in [
+
         "DatabaseCog",
         "DatabaseHandler",
         "Database"
+
     ]:
 
-        db_cog = bot.get_cog(cog_name)
+        db_cog = bot.get_cog(
+            cog_name
+        )
 
         if (
             db_cog
-            and hasattr(db_cog, "get_guild_prefix")
+            and hasattr(
+                db_cog,
+                "get_guild_prefix"
+            )
         ):
 
             custom_prefix = await db_cog.get_guild_prefix(
@@ -112,8 +190,11 @@ async def get_prefix(bot, message):
 intents = discord.Intents.all()
 
 bot = BoltBot(
+
     command_prefix=get_prefix,
+
     intents=intents,
+
     help_command=None
 )
 
@@ -134,8 +215,10 @@ bot.DEVELOPER_IDS = [
 ]
 
 print(
+
     f"[Developers] Loaded "
-    f"{len(bot.DEVELOPER_IDS)} developer IDs."
+    f"{len(bot.DEVELOPER_IDS)} "
+    f"developer IDs."
 )
 
 # =========================================================
@@ -148,7 +231,9 @@ async def global_blacklist_check(ctx):
     if ctx.author.id in bot.DEVELOPER_IDS:
         return True
 
-    db_cog = bot.get_cog("DatabaseCog")
+    db_cog = bot.get_cog(
+        "DatabaseCog"
+    )
 
     if not db_cog:
         return True
@@ -175,7 +260,9 @@ async def global_blacklist_check(ctx):
         if guild_blacklist:
 
             try:
+
                 await ctx.guild.leave()
+
             except Exception:
                 pass
 
@@ -191,42 +278,120 @@ async def global_blacklist_check(ctx):
 async def on_ready():
 
     print("==================================================")
-    print(f"[Initialization] Logged in as: {bot.user.name} ({bot.user.id})")
-    print("[Initialization] System architecture loaded cleanly.")
+
+    print(
+        f"[Initialization] Logged in as: "
+        f"{bot.user.name} "
+        f"({bot.user.id})"
+    )
+
+    print(
+        "[Initialization] System architecture "
+        "loaded cleanly."
+    )
+
     print("==================================================")
 
-    guild_count = len(bot.guilds)
-    activity_text = f"over {guild_count} servers | Bolt Engine"
+    guild_count = len(
+        bot.guilds
+    )
+
+    activity_text = (
+        f"over {guild_count} servers "
+        f"| Bolt Engine"
+    )
+
     await bot.change_presence(
+
         status=discord.Status.online,
+
         activity=discord.Activity(
+
             type=discord.ActivityType.watching,
+
             name=activity_text
         ),
     )
 
+    # =====================================================
     # Restore Persistent Views
-    try:
-        bot.add_view(HelpView())
-        bot.add_view(TicketCategoryView(bot))
-        bot.add_view(OpenTicketButton())
-        print("[Views] Persistent views restored successfully.")
-    except Exception as e:
-        print(f"[Views Fail] Failed restoring persistent views: {e}")
+    # =====================================================
 
+    try:
+
+        bot.add_view(
+            HelpView()
+        )
+
+        bot.add_view(
+            TicketCategoryView(bot)
+        )
+
+        bot.add_view(
+            OpenTicketButton()
+        )
+
+        print(
+            "[Views] Persistent views "
+            "restored successfully."
+        )
+
+    except Exception as e:
+
+        print(
+            f"[Views Fail] Failed restoring "
+            f"persistent views: {e}"
+        )
+
+    # =====================================================
     # Restore Database Persistent Views
-    for cog_name in ["DatabaseCog", "DatabaseHandler", "Database"]:
-        db_cog = bot.get_cog(cog_name)
-        if db_cog and hasattr(db_cog, "restore_persistent_views"):
+    # =====================================================
+
+    for cog_name in [
+
+        "DatabaseCog",
+        "DatabaseHandler",
+        "Database"
+
+    ]:
+
+        db_cog = bot.get_cog(
+            cog_name
+        )
+
+        if (
+            db_cog
+            and hasattr(
+                db_cog,
+                "restore_persistent_views"
+            )
+        ):
+
             try:
+
                 await db_cog.restore_persistent_views()
-                print("[Database] Persistent database views restored.")
+
+                print(
+                    "[Database] Persistent database "
+                    "views restored."
+                )
+
             except Exception as e:
-                print(f"[Database Fail] Persistent view restoration failed: {e}")
+
+                print(
+                    f"[Database Fail] "
+                    f"Persistent view restoration failed: {e}"
+                )
+
             break
 
     print("==================================================")
-    print("[System Ready] Bolt Engine is fully operational.")
+
+    print(
+        "[System Ready] Bolt Engine "
+        "is fully operational."
+    )
+
     print("==================================================")
 
 # =========================================================
@@ -234,9 +399,18 @@ async def on_ready():
 # =========================================================
 
 @bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.CommandNotFound):
+async def on_command_error(
+    ctx,
+    error
+):
+
+    if isinstance(
+        error,
+        commands.CommandNotFound
+    ):
+
         return
+
     raise error
 
 # =========================================================
@@ -244,15 +418,32 @@ async def on_command_error(ctx, error):
 # =========================================================
 
 async def main():
+
+    # =====================================================
     # Start Flask Web Server
+    # =====================================================
+
     start_web_server()
-    
+
     async with bot:
-        token = os.getenv("BOT_TOKEN") or os.getenv("DISCORD_TOKEN")
+
+        token = (
+            os.getenv("BOT_TOKEN")
+            or os.getenv("DISCORD_TOKEN")
+        )
+
         if not token:
-            raise ValueError("CRITICAL ERROR: No token found.")
+
+            raise ValueError(
+                "CRITICAL ERROR: No token found."
+            )
 
         await bot.start(token)
 
+# =========================================================
+# Launch
+# =========================================================
+
 if __name__ == "__main__":
+
     asyncio.run(main())
