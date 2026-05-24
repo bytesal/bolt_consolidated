@@ -3,24 +3,52 @@ from discord.ext import commands
 from discord import app_commands
 
 
+# =========================================================
+# HELP DROPDOWN
+# =========================================================
+
 class HelpDropdown(discord.ui.Select):
+
     def __init__(self):
+
         options = [
+
             discord.SelectOption(
                 label="Moderation",
                 emoji="🛡️",
                 description="View moderation commands."
             ),
+
             discord.SelectOption(
                 label="Modmail",
                 emoji="📩",
                 description="View modmail commands."
             ),
+
+            discord.SelectOption(
+                label="Reception",
+                emoji="🎉",
+                description="View reception system commands."
+            ),
+
+            discord.SelectOption(
+                label="Applications",
+                emoji="📄",
+                description="View application system commands."
+            ),
+
+            discord.SelectOption(
+                label="Leveling",
+                emoji="📈",
+                description="View leveling commands."
+            ),
+
             discord.SelectOption(
                 label="Utility",
                 emoji="⚙️",
                 description="View utility commands."
             ),
+
             discord.SelectOption(
                 label="Staff",
                 emoji="👥",
@@ -57,6 +85,7 @@ class HelpDropdown(discord.ui.Select):
             )
 
             commands_list = [
+
                 "`/warn` → Warn a member.",
                 "`/timeout` → Timeout a member.",
                 "`/mute` → Mute a member.",
@@ -92,10 +121,91 @@ class HelpDropdown(discord.ui.Select):
             )
 
             commands_list = [
-                "`/setupmodmail` → Setup modmail system.",
+
+                "`/setupmodmail` → Setup modmail category.",
+                "`/panel` → Send modmail panel.",
                 "`DM the bot` → Open a support ticket.",
                 "`Claim Button` → Claim a ticket.",
                 "`Close Button` → Close a ticket.",
+            ]
+
+            embed.add_field(
+                name="Commands",
+                value="\n".join(commands_list),
+                inline=False
+            )
+
+        # =====================================================
+        # RECEPTION
+        # =====================================================
+
+        elif category == "Reception":
+
+            embed.title = "🎉 Reception Commands"
+
+            embed.description = (
+                "Reception and welcome system commands."
+            )
+
+            commands_list = [
+
+                "`/setwelcome` → Configure welcome messages.",
+                "`/setleave` → Configure leave messages.",
+                "`/setautorole` → Configure autoroles.",
+                "`/setruleschannel` → Configure rules channel.",
+            ]
+
+            embed.add_field(
+                name="Commands",
+                value="\n".join(commands_list),
+                inline=False
+            )
+
+        # =====================================================
+        # APPLICATIONS
+        # =====================================================
+
+        elif category == "Applications":
+
+            embed.title = "📄 Application Commands"
+
+            embed.description = (
+                "Staff applications and forms system."
+            )
+
+            commands_list = [
+
+                "`/applicationpanel` → Send application panel.",
+                "`/createapplication` → Create an application.",
+                "`/applications` → View applications.",
+                "`/acceptapplication` → Accept an application.",
+                "`/denyapplication` → Deny an application.",
+            ]
+
+            embed.add_field(
+                name="Commands",
+                value="\n".join(commands_list),
+                inline=False
+            )
+
+        # =====================================================
+        # LEVELING
+        # =====================================================
+
+        elif category == "Leveling":
+
+            embed.title = "📈 Leveling Commands"
+
+            embed.description = (
+                "XP and leveling system commands."
+            )
+
+            commands_list = [
+
+                "`/rank` → View your rank.",
+                "`/leaderboard` → View XP leaderboard.",
+                "`/setlevelchannel` → Configure level-up channel.",
+                "`/setxprate` → Configure XP gain rate.",
             ]
 
             embed.add_field(
@@ -113,14 +223,15 @@ class HelpDropdown(discord.ui.Select):
             embed.title = "⚙️ Utility Commands"
 
             embed.description = (
-                "General server utility commands."
+                "General utility commands."
             )
 
             commands_list = [
+
                 "`/sticky` → Create sticky messages.",
                 "`/unsticky` → Remove sticky messages.",
-                "`/setwelcome` → Configure welcome messages.",
-                "`/setleave` → Configure leave messages.",
+                "`/ping` → View bot latency.",
+                "`/serverinfo` → View server information.",
             ]
 
             embed.add_field(
@@ -142,6 +253,7 @@ class HelpDropdown(discord.ui.Select):
             )
 
             commands_list = [
+
                 "`/setdepartment` → Assign departments.",
                 "`/removedepartment` → Remove department.",
                 "`/addrank` → Create staff rank.",
@@ -167,20 +279,30 @@ class HelpDropdown(discord.ui.Select):
         )
 
 
+# =========================================================
+# HELP VIEW
+# =========================================================
+
 class HelpView(discord.ui.View):
+
     def __init__(self):
         super().__init__(timeout=None)
 
         self.add_item(HelpDropdown())
 
 
+# =========================================================
+# HELP COG
+# =========================================================
+
 class HelpCog(commands.Cog):
+
     def __init__(self, bot):
         self.bot = bot
 
-    # =========================================================
-    # /help
-    # =========================================================
+    # =====================================================
+    # /HELP
+    # =====================================================
 
     @app_commands.command(
         name="help",
@@ -203,25 +325,32 @@ class HelpCog(commands.Cog):
         embed.add_field(
             name="📚 Categories",
             value=(
+
                 "🛡️ Moderation\n"
                 "📩 Modmail\n"
+                "🎉 Reception\n"
+                "📄 Applications\n"
+                "📈 Leveling\n"
                 "⚙️ Utility\n"
                 "👥 Staff"
+
             ),
             inline=False
         )
 
-        embed.set_thumbnail(
-            url=interaction.guild.icon.url
-            if interaction.guild.icon
-            else discord.Embed.Empty
-        )
+        if interaction.guild.icon:
+
+            embed.set_thumbnail(
+                url=interaction.guild.icon.url
+            )
 
         embed.set_footer(
             text=f"{interaction.guild.name}",
-            icon_url=interaction.guild.icon.url
-            if interaction.guild.icon
-            else None
+            icon_url=(
+                interaction.guild.icon.url
+                if interaction.guild.icon
+                else None
+            )
         )
 
         await interaction.response.send_message(
@@ -231,5 +360,12 @@ class HelpCog(commands.Cog):
         )
 
 
+# =========================================================
+# SETUP
+# =========================================================
+
 async def setup(bot):
-    await bot.add_cog(HelpCog(bot))
+
+    await bot.add_cog(
+        HelpCog(bot)
+    )
