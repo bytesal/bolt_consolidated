@@ -4,195 +4,219 @@ from discord import app_commands
 from datetime import datetime
 import asyncio
 
+TICKET_COOLDOWN = 60
 
-TICKET_COOLDOWN = 300
 
+# =========================================================
+# Ticket Category Dropdown
+# =========================================================
+
+class TicketCategorySelect(discord.ui.Select):
+
+    def __init__(self, bot):
+
+        self.bot = bot
+
+        options = [
+            discord.SelectOption(
+                label="Support",
+                description="General support ticket.",
+                emoji="🛠️"
+            ),
+            discord.SelectOption(
+                label="Report",
+                description="Report a user or issue.",
+                emoji="🚨"
+            ),
+            discord.SelectOption(
+                label="Partnership",
+                description="Business or partnership inquiry.",
+                emoji="🤝"
+            )
+        ]
+
+        super().__init__(
+            placeholder="Choose a ticket category...",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id="ticket_category_select"
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+
+        category = self.values[0]
+
+        cog = self.bot.get_cog("ModmailCog")
+
+        if not cog:
+            return await interaction.response.send_message(
+                "❌ Modmail system unavailable.",
+                ephemeral=True
+            )
+
+        await cog.create_ticket(
+            interaction,
+            category
+        )
+
+
+# =========================================================
+# Ticket Category View
+# =========================================================
 
 class TicketCategoryView(discord.ui.View):
+
     def __init__(self, bot):
         super().__init__(timeout=None)
+
         self.bot = bot
 
-    async def create_ticket(
+        self.add_item(
+            TicketCategorySelect(bot)
+        )
+
+
+# =========================================================
+# Open Ticket Panel Button
+# =========================================================
+
+class OpenTicketButton(discord.ui.View):
+
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="Create Ticket",
+        style=discord.ButtonStyle.blurple,
+        emoji="📩",
+        custom_id="create_ticket_button"
+    )
+    async def create_ticket_button(
         self,
         interaction: discord.Interaction,
-        category_name: str
+        button: discord.ui.Button
     ):
-        db_cog = self.bot.get_cog("DatabaseCog")
-
-        existing = await db_cog.modmail_tickets.find_one({
-            "user_id": str(interaction.user.id),
-            "status": "open"
-        })
-
-        if existing:
-            return await interaction.response.send_message(
-                "❌ You already have an open ticket.",
-                ephemeral=True
-            )
-
-        config = await db_cog.settings.find_one({
-            "_id": f"modmail_guild"
-        })
-
-        if not config:
-            return await interaction.response.send_message(
-                "❌ Modmail is not configured.",
-                ephemeral=True
-            )
-
-        guild = self.bot.get_guild(
-            int(config["guild_id"])
-        )
-
-        category = guild.get_channel(
-            int(config["category_id"])
-        )
-
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(
-                read_messages=False
-            ),
-            guild.me: discord.PermissionOverwrite(
-                read_messages=True,
-                send_messages=True
-            )
-        }
-
-        channel = await guild.create_text_channel(
-            name=f"{category_name}-{interaction.user.name}",
-            category=category,
-            overwrites=overwrites
-        )
-
-        await db_cog.modmail_tickets.insert_one({
-            "user_id": str(interaction.user.id),
-            "channel_id": str(channel.id),
-            "category": category_name,
-            "status": "open",
-            "claimed_by": None,
-            "opened_at": datetime.utcnow()
-        })
 
         embed = discord.Embed(
-            title="📩 New Ticket",
-            color=discord.Color.green()
+            title="📩 Support Center",
+            description=(
+                "Please choose a category below "
+                "to open a support ticket."
+            ),
+            color=discord.Color.blurple()
         )
 
         embed.add_field(
-            name="User",
-            value=f"{interaction.user.mention}",
+            name="Categories",
+            value=(
+                "🛠️ Support\n"
+                "🚨 Report\n"
+                "🤝 Partnership"
+            ),
             inline=False
         )
 
-        embed.add_field(
-            name="Category",
-            value=category_name,
-            inline=False
+        embed.set_footer(
+            text="Check your DMs after clicking."
         )
 
-        await channel.send(
-            embed=embed,
-            view=TicketControls(self.bot, interaction.user.id)
-        )
+        try:
 
-        await interaction.response.send_message(
-            "✅ Ticket created successfully.",
-            ephemeral=True
-        )
+            await interaction.user.send(
+                embed=embed,
+                view=TicketCategoryView(
+                    interaction.client
+                )
+            )
 
-    @discord.ui.button(
-        label="Support",
-        style=discord.ButtonStyle.blurple
-    )
-    async def support(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-        await self.create_ticket(interaction, "support")
+            await interaction.response.send_message(
+                "📨 Check your DMs.",
+                ephemeral=True
+            )
 
-    @discord.ui.button(
-        label="Report",
-        style=discord.ButtonStyle.red
-    )
-    async def report(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-        await self.create_ticket(interaction, "report")
+        except discord.Forbidden:
 
-    @discord.ui.button(
-        label="Partnership",
-        style=discord.ButtonStyle.green
-    )
-    async def partnership(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-        await self.create_ticket(interaction, "partnership")
+            await interaction.response.send_message(
+                (
+                    "❌ I couldn't DM you.\n"
+                    "Please enable Direct Messages."
+                ),
+                ephemeral=True
+            )
 
+
+# =========================================================
+# Ticket Controls
+# =========================================================
 
 class TicketControls(discord.ui.View):
-    def __init__(self, bot, user_id: int):
+
+    def __init__(self, bot):
         super().__init__(timeout=None)
+
         self.bot = bot
-        self.user_id = user_id
 
     @discord.ui.button(
         label="Claim",
-        style=discord.ButtonStyle.blurple
+        style=discord.ButtonStyle.green,
+        emoji="🛄",
+        custom_id="claim_ticket_button"
     )
-    async def claim(
+    async def claim_ticket(
         self,
         interaction: discord.Interaction,
         button: discord.ui.Button
     ):
-        db_cog = self.bot.get_cog("DatabaseCog")
 
-        await db_cog.modmail_tickets.update_one(
-            {"channel_id": str(interaction.channel.id)},
-            {"$set": {"claimed_by": str(interaction.user.id)}}
+        embed = discord.Embed(
+            description=(
+                f"🛄 Ticket claimed by "
+                f"{interaction.user.mention}"
+            ),
+            color=discord.Color.green()
         )
 
         await interaction.response.send_message(
-            f"✅ Ticket claimed by {interaction.user.mention}"
+            embed=embed
         )
 
     @discord.ui.button(
         label="Close",
-        style=discord.ButtonStyle.red
+        style=discord.ButtonStyle.red,
+        emoji="🔒",
+        custom_id="close_ticket_button"
     )
-    async def close(
+    async def close_ticket(
         self,
         interaction: discord.Interaction,
         button: discord.ui.Button
     ):
-        db_cog = self.bot.get_cog("DatabaseCog")
+
+        cog = self.bot.get_cog("ModmailCog")
+
+        if not cog:
+            return
+
+        db_cog = cog.get_database_cog()
+
+        if not db_cog:
+            return
 
         ticket = await db_cog.modmail_tickets.find_one({
-            "channel_id": str(interaction.channel.id)
+            "channel_id": str(interaction.channel.id),
+            "status": "open"
         })
 
         if not ticket:
-            return
 
-        user = self.bot.get_user(
-            int(ticket["user_id"])
-        )
-
-        if user:
-            try:
-                await user.send(
-                    "🔒 Your ticket has been closed."
-                )
-            except Exception:
-                pass
+            return await interaction.response.send_message(
+                "❌ Ticket not found.",
+                ephemeral=True
+            )
 
         await db_cog.modmail_tickets.update_one(
-            {"channel_id": str(interaction.channel.id)},
+            {"_id": ticket["_id"]},
             {
                 "$set": {
                     "status": "closed",
@@ -200,6 +224,19 @@ class TicketControls(discord.ui.View):
                 }
             }
         )
+
+        try:
+
+            user = await self.bot.fetch_user(
+                int(ticket["user_id"])
+            )
+
+            await user.send(
+                "🔒 Your support ticket has been closed."
+            )
+
+        except Exception:
+            pass
 
         await interaction.response.send_message(
             "🔒 Closing ticket..."
@@ -210,34 +247,64 @@ class TicketControls(discord.ui.View):
         await interaction.channel.delete()
 
 
+# =========================================================
+# Modmail Cog
+# =========================================================
+
 class ModmailCog(commands.Cog):
+
     def __init__(self, bot):
+
         self.bot = bot
+
         self.cooldowns = {}
 
-    # =========================================================
-    # CONFIG
-    # =========================================================
+    # =====================================================
+    # Helpers
+    # =====================================================
+
+    def get_database_cog(self):
+
+        for name in [
+            "DatabaseCog",
+            "DatabaseHandler",
+            "Database"
+        ]:
+
+            cog = self.bot.get_cog(name)
+
+            if cog:
+                return cog
+
+        return None
+
+    # =====================================================
+    # Setup Modmail
+    # =====================================================
 
     @app_commands.command(
         name="setupmodmail",
-        description="Setup modmail."
+        description="Setup the modmail category."
     )
-    async def setup_modmail(
+    @app_commands.default_permissions(
+        administrator=True
+    )
+    async def setupmodmail(
         self,
         interaction: discord.Interaction,
         category: discord.CategoryChannel
     ):
-        if not interaction.user.guild_permissions.administrator:
+
+        db_cog = self.get_database_cog()
+
+        if not db_cog:
             return await interaction.response.send_message(
-                "❌ Administrator required.",
+                "❌ Database system unavailable.",
                 ephemeral=True
             )
 
-        db_cog = self.bot.get_cog("DatabaseCog")
-
         await db_cog.settings.update_one(
-            {"_id": "modmail_guild"},
+            {"_id": "modmail_config"},
             {
                 "$set": {
                     "guild_id": str(interaction.guild.id),
@@ -248,89 +315,333 @@ class ModmailCog(commands.Cog):
         )
 
         await interaction.response.send_message(
-            "✅ Modmail configured successfully."
+            (
+                f"✅ Modmail category set to "
+                f"{category.mention}"
+            )
         )
 
-    # =========================================================
-    # DM LISTENER
-    # =========================================================
+    # =====================================================
+    # Send Panel
+    # =====================================================
+
+    @app_commands.command(
+        name="panel",
+        description="Send the modmail panel."
+    )
+    @app_commands.default_permissions(
+        administrator=True
+    )
+    async def panel(
+        self,
+        interaction: discord.Interaction
+    ):
+
+        embed = discord.Embed(
+            title="📩 Support & Assistance Center",
+            description=(
+                "Need help from the staff team?\n\n"
+                "Click the button below to create a ticket."
+            ),
+            color=discord.Color.blurple()
+        )
+
+        embed.add_field(
+            name="Categories",
+            value=(
+                "🛠️ Support\n"
+                "🚨 Reports\n"
+                "🤝 Partnerships"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="Rules",
+            value=(
+                "• Do not spam tickets.\n"
+                "• Be respectful.\n"
+                "• Explain your issue clearly."
+            ),
+            inline=False
+        )
+
+        if interaction.guild.icon:
+
+            embed.set_thumbnail(
+                url=interaction.guild.icon.url
+            )
+
+        embed.set_footer(
+            text=f"{interaction.guild.name} Support System"
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            view=OpenTicketButton()
+        )
+
+    # =====================================================
+    # Create Ticket
+    # =====================================================
+
+    async def create_ticket(
+        self,
+        interaction: discord.Interaction,
+        category_name: str
+    ):
+
+        db_cog = self.get_database_cog()
+
+        if not db_cog:
+            return
+
+        config = await db_cog.settings.find_one({
+            "_id": "modmail_config"
+        })
+
+        if not config:
+
+            return await interaction.response.send_message(
+                (
+                    "❌ Modmail has not been configured."
+                ),
+                ephemeral=True
+            )
+
+        existing_ticket = await db_cog.modmail_tickets.find_one({
+            "user_id": str(interaction.user.id),
+            "status": "open"
+        })
+
+        if existing_ticket:
+
+            return await interaction.response.send_message(
+                (
+                    "❌ You already have an open ticket."
+                ),
+                ephemeral=True
+            )
+
+        guild = self.bot.get_guild(
+            int(config["guild_id"])
+        )
+
+        if not guild:
+            return
+
+        category = guild.get_channel(
+            int(config["category_id"])
+        )
+
+        if not category:
+            return
+
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(
+                view_channel=False
+            ),
+
+            guild.me: discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True
+            ),
+
+            interaction.user: discord.PermissionOverwrite(
+                view_channel=False
+            )
+        }
+
+        channel_name = (
+            f"{category_name.lower()}-"
+            f"{interaction.user.name}"
+        )
+
+        ticket_channel = await guild.create_text_channel(
+            name=channel_name,
+            category=category,
+            overwrites=overwrites
+        )
+
+        await db_cog.modmail_tickets.insert_one({
+
+            "user_id": str(interaction.user.id),
+
+            "channel_id": str(ticket_channel.id),
+
+            "category": category_name,
+
+            "status": "open",
+
+            "created_at": datetime.utcnow()
+        })
+
+        embed = discord.Embed(
+            title="📩 New Modmail Ticket",
+            description=(
+                f"User: {interaction.user.mention}\n"
+                f"Category: **{category_name}**"
+            ),
+            color=discord.Color.blurple(),
+            timestamp=datetime.utcnow()
+        )
+
+        embed.add_field(
+            name="Instructions",
+            value=(
+                "Reply in this channel to "
+                "respond to the user."
+            ),
+            inline=False
+        )
+
+        await ticket_channel.send(
+            embed=embed,
+            view=TicketControls(self.bot)
+        )
+
+        await interaction.response.send_message(
+            (
+                "✅ Ticket created successfully.\n"
+                "Please continue in DMs."
+            ),
+            ephemeral=True
+        )
+
+        try:
+
+            await interaction.user.send(
+                (
+                    "✅ Your support ticket "
+                    "has been created."
+                )
+            )
+
+        except Exception:
+            pass
+
+    # =====================================================
+    # DM Relay System
+    # =====================================================
 
     @commands.Cog.listener()
     async def on_message(self, message):
+
         if message.author.bot:
             return
 
-        db_cog = self.bot.get_cog("DatabaseCog")
+        db_cog = self.get_database_cog()
+
+        if not db_cog:
+            return
+
+        # =================================================
+        # USER DMS BOT
+        # =================================================
 
         if isinstance(message.channel, discord.DMChannel):
-
-            now = datetime.utcnow().timestamp()
-
-            if message.author.id in self.cooldowns:
-                diff = now - self.cooldowns[message.author.id]
-
-                if diff < TICKET_COOLDOWN:
-                    return await message.author.send(
-                        "⏳ Please wait before opening another ticket."
-                    )
 
             ticket = await db_cog.modmail_tickets.find_one({
                 "user_id": str(message.author.id),
                 "status": "open"
             })
 
-            if not ticket:
-                self.cooldowns[message.author.id] = now
+            # =============================================
+            # Existing Ticket
+            # =============================================
+
+            if ticket:
+
+                guild = self.bot.get_guild(
+                    int(
+                        (
+                            await db_cog.settings.find_one({
+                                "_id": "modmail_config"
+                            })
+                        )["guild_id"]
+                    )
+                )
+
+                if not guild:
+                    return
+
+                channel = guild.get_channel(
+                    int(ticket["channel_id"])
+                )
+
+                if not channel:
+                    return
 
                 embed = discord.Embed(
-                    title="Support Center",
-                    description="Choose a category below.",
-                    color=discord.Color.blurple()
+                    description=message.content,
+                    color=discord.Color.blue(),
+                    timestamp=datetime.utcnow()
                 )
 
-                return await message.author.send(
-                    embed=embed,
-                    view=TicketCategoryView(self.bot)
+                embed.set_author(
+                    name=message.author.name,
+                    icon_url=message.author.display_avatar.url
                 )
 
-            guild = self.bot.get_guild(
-                int(
-                    (
-                        await db_cog.settings.find_one({
-                            "_id": "modmail_guild"
-                        })
-                    )["guild_id"]
-                )
-            )
+                if message.attachments:
 
-            channel = guild.get_channel(
-                int(ticket["channel_id"])
-            )
+                    embed.add_field(
+                        name="Attachments",
+                        value="\n".join(
+                            a.url
+                            for a in message.attachments
+                        ),
+                        inline=False
+                    )
 
-            if not channel:
+                await channel.send(embed=embed)
+
                 return
 
-            embed = discord.Embed(
-                description=message.content,
-                color=discord.Color.blue(),
-                timestamp=datetime.utcnow()
-            )
+            # =============================================
+            # Cooldown For New Tickets
+            # =============================================
 
-            embed.set_author(
-                name=message.author.name,
-                icon_url=message.author.display_avatar.url
-            )
+            now = datetime.utcnow().timestamp()
 
-            if message.attachments:
-                embed.add_field(
-                    name="Attachments",
-                    value="\n".join(a.url for a in message.attachments),
-                    inline=False
+            if message.author.id in self.cooldowns:
+
+                diff = (
+                    now -
+                    self.cooldowns[message.author.id]
                 )
 
-            await channel.send(embed=embed)
+                if diff < TICKET_COOLDOWN:
 
-        else:
+                    return await message.author.send(
+                        (
+                            "⏳ Please wait before "
+                            "opening another ticket."
+                        )
+                    )
+
+            self.cooldowns[message.author.id] = now
+
+            embed = discord.Embed(
+                title="📩 Support Center",
+                description=(
+                    "Choose a category below."
+                ),
+                color=discord.Color.blurple()
+            )
+
+            return await message.author.send(
+                embed=embed,
+                view=TicketCategoryView(self.bot)
+            )
+
+        # =================================================
+        # STAFF REPLY
+        # =================================================
+
+        if message.guild:
+
             ticket = await db_cog.modmail_tickets.find_one({
                 "channel_id": str(message.channel.id),
                 "status": "open"
@@ -339,41 +650,46 @@ class ModmailCog(commands.Cog):
             if not ticket:
                 return
 
-            if message.author.bot:
-                return
-
-            user = self.bot.get_user(
-                int(ticket["user_id"])
-            )
-
-            if not user:
-                return
-
-            embed = discord.Embed(
-                description=message.content,
-                color=discord.Color.orange(),
-                timestamp=datetime.utcnow()
-            )
-
-            embed.set_author(
-                name=f"Staff • {message.author.name}",
-                icon_url=message.author.display_avatar.url
-            )
-
-            if message.attachments:
-                embed.add_field(
-                    name="Attachments",
-                    value="\n".join(a.url for a in message.attachments),
-                    inline=False
-                )
-
             try:
-                await user.send(embed=embed)
-            except Exception:
-                await message.channel.send(
-                    "❌ Could not DM user."
+
+                user = await self.bot.fetch_user(
+                    int(ticket["user_id"])
                 )
 
+                embed = discord.Embed(
+                    description=message.content,
+                    color=discord.Color.green(),
+                    timestamp=datetime.utcnow()
+                )
+
+                embed.set_author(
+                    name=f"{message.author}",
+                    icon_url=message.author.display_avatar.url
+                )
+
+                if message.attachments:
+
+                    embed.add_field(
+                        name="Attachments",
+                        value="\n".join(
+                            a.url
+                            for a in message.attachments
+                        ),
+                        inline=False
+                    )
+
+                await user.send(embed=embed)
+
+            except Exception:
+                pass
+
+
+# =========================================================
+# Setup
+# =========================================================
 
 async def setup(bot):
-    await bot.add_cog(ModmailCog(bot))
+
+    await bot.add_cog(
+        ModmailCog(bot)
+    )
