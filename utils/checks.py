@@ -13,7 +13,7 @@ def staff_or_developer(**perms):
             return True
 
         # ============================================
-        # Permission Check
+        # Normal Permission Check
         # ============================================
 
         permissions = interaction.channel.permissions_for(
