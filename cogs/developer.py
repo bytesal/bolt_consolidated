@@ -68,10 +68,18 @@ class DeveloperCog(commands.Cog):
             ephemeral=True
         )
 
+        extension = f"cogs.{cog}"
+
         try:
 
+            if extension in self.bot.extensions:
+
+                return await interaction.followup.send(
+                    f"⚠️ `{cog}` is already loaded."
+                )
+
             await self.bot.load_extension(
-                f"cogs.{cog}"
+                extension
             )
 
             await interaction.followup.send(
@@ -102,20 +110,34 @@ class DeveloperCog(commands.Cog):
             ephemeral=True
         )
 
+        extension = f"cogs.{cog}"
+
         try:
 
-            await self.bot.reload_extension(
-                f"cogs.{cog}"
-            )
+            if extension in self.bot.extensions:
 
-            await interaction.followup.send(
-                f"✅ Reloaded cog: `{cog}`"
-            )
+                await self.bot.reload_extension(
+                    extension
+                )
+
+                await interaction.followup.send(
+                    f"✅ Reloaded cog: `{cog}`"
+                )
+
+            else:
+
+                await self.bot.load_extension(
+                    extension
+                )
+
+                await interaction.followup.send(
+                    f"✅ Loaded cog: `{cog}`"
+                )
 
         except Exception as e:
 
             await interaction.followup.send(
-                f"❌ Failed reloading `{cog}`\n```py\n{e}\n```"
+                f"❌ Failed processing `{cog}`\n```py\n{e}\n```"
             )
 
     # =====================================================
@@ -136,10 +158,18 @@ class DeveloperCog(commands.Cog):
             ephemeral=True
         )
 
+        extension = f"cogs.{cog}"
+
         try:
 
+            if extension not in self.bot.extensions:
+
+                return await interaction.followup.send(
+                    f"⚠️ `{cog}` is not loaded."
+                )
+
             await self.bot.unload_extension(
-                f"cogs.{cog}"
+                extension
             )
 
             await interaction.followup.send(
