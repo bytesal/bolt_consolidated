@@ -292,32 +292,58 @@ class ModmailCog(commands.Cog):
     async def setupmodmail(
         self,
         interaction: discord.Interaction,
-        category: discord.CategoryChannel
+        category: discord.CategoryChannel,
+        target_guild_id: str
     ):
 
         db_cog = self.get_database_cog()
 
         if not db_cog:
+
             return await interaction.response.send_message(
                 "❌ Database system unavailable.",
                 ephemeral=True
             )
 
+        target_guild = self.bot.get_guild(
+            int(target_guild_id)
+        )
+
+        if not target_guild:
+
+            return await interaction.response.send_message(
+                "❌ Target guild not found.",
+                ephemeral=True
+            )
+
         await db_cog.settings.update_one(
+
             {"_id": "modmail_config"},
+
             {
                 "$set": {
-                    "guild_id": str(interaction.guild.id),
+
+                    "main_guild_id": target_guild_id,
+
+                    "staff_guild_id": str(interaction.guild.id),
+
                     "category_id": str(category.id)
                 }
             },
+
             upsert=True
         )
 
         await interaction.response.send_message(
+
             (
-                f"✅ Modmail category set to "
-                f"{category.mention}"
+                "✅ Cross-server modmail configured successfully.\n\n"
+
+                f"🛡️ Staff Server: `{interaction.guild.name}`\n"
+
+                f"🌐 Main Server: `{target_guild.name}`\n"
+
+                f"📂 Category: {category.mention}"
             )
         )
 
@@ -424,7 +450,7 @@ class ModmailCog(commands.Cog):
             )
 
         guild = self.bot.get_guild(
-            int(config["guild_id"])
+            int(config["staff_guild_id"])
         )
 
         if not guild:
@@ -446,10 +472,6 @@ class ModmailCog(commands.Cog):
                 view_channel=True,
                 send_messages=True,
                 read_message_history=True
-            ),
-
-            interaction.user: discord.PermissionOverwrite(
-                view_channel=False
             )
         }
 
@@ -547,20 +569,14 @@ class ModmailCog(commands.Cog):
                 "status": "open"
             })
 
-            # =============================================
-            # Existing Ticket
-            # =============================================
-
             if ticket:
 
+                config = await db_cog.settings.find_one({
+                    "_id": "modmail_config"
+                })
+
                 guild = self.bot.get_guild(
-                    int(
-                        (
-                            await db_cog.settings.find_one({
-                                "_id": "modmail_config"
-                            })
-                        )["guild_id"]
-                    )
+                    int(config["staff_guild_id"])
                 )
 
                 if not guild:
@@ -598,10 +614,6 @@ class ModmailCog(commands.Cog):
                 await channel.send(embed=embed)
 
                 return
-
-            # =============================================
-            # Cooldown For New Tickets
-            # =============================================
 
             now = datetime.utcnow().timestamp()
 
