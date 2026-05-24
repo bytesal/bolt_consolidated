@@ -55,7 +55,7 @@ class CoreCog(commands.Cog):
         public_guild_id="The public server ID."
     )
 
-    async def link_server_command(
+    async def link_server(
         self,
         interaction: discord.Interaction,
         public_guild_id: str
@@ -139,7 +139,7 @@ class CoreCog(commands.Cog):
         prefix="New server prefix."
     )
 
-    async def set_prefix_command(
+    async def set_prefix(
         self,
         interaction: discord.Interaction,
         prefix: str
@@ -194,7 +194,7 @@ class CoreCog(commands.Cog):
         activity_text="Presence text."
     )
 
-    async def bot_status_command(
+    async def change_status(
         self,
         interaction: discord.Interaction,
         status_type: str,
@@ -254,7 +254,7 @@ class CoreCog(commands.Cog):
         new_name="New bot username."
     )
 
-    async def set_bot_name_command(
+    async def set_bot_name(
         self,
         interaction: discord.Interaction,
         new_name: str
@@ -302,7 +302,7 @@ class CoreCog(commands.Cog):
         description="Sync slash commands instantly."
     )
 
-    async def sync_command(
+    async def sync(
         self,
         interaction: discord.Interaction
     ):
@@ -324,16 +324,20 @@ class CoreCog(commands.Cog):
 
         try:
 
-            synced_global = await self.bot.tree.sync()
+            guild = interaction.guild
 
-            synced_guild = await self.bot.tree.sync(
-                guild=interaction.guild
+            self.bot.tree.copy_global_to(
+                guild=guild
+            )
+
+            synced = await self.bot.tree.sync(
+                guild=guild
             )
 
             await interaction.followup.send(
 
-                f"✅ Global Sync: `{len(synced_global)}` commands\n"
-                f"✅ Guild Sync: `{len(synced_guild)}` commands"
+                f"✅ Successfully synced "
+                f"`{len(synced)}` commands."
 
             )
 
@@ -341,18 +345,9 @@ class CoreCog(commands.Cog):
 
             await interaction.followup.send(
 
-                f"❌ Sync failed:\n```py\n{e}\n```"
+                f"❌ Sync failed:\n`{e}`"
 
             )
-
-    # =========================================================
-    # IMPORTANT:
-    # HELP COMMAND REMOVED
-    # =========================================================
-    # The old /help command here was conflicting
-    # with your advanced help.py system.
-    # Keeping it here breaks slash commands.
-    # =========================================================
 
 
 # =========================================================
