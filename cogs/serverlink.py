@@ -1,210 +1,485 @@
+import os
 import discord
 from discord.ext import commands
-from discord import app_commands
+from motor.motor_asyncio import AsyncIOMotorClient
+
+from cogs.applications import ReviewButtons
+from cogs.staff_quota import StaffQuotaView, RanksDropdownView
+from cogs.modmail import TicketControls
 
 
-class ServerLinkCog(commands.Cog):
+class DatabaseCog(commands.Cog):
 
     def __init__(self, bot):
 
         self.bot = bot
 
-    # =====================================================
-    # Developer Check
-    # =====================================================
+        # =====================================================
+        # MongoDB Connection
+        # =====================================================
 
-    def is_developer(
+        mongo_uri = (
+            os.getenv("MONGO_URI")
+            or os.getenv("MONGODB_URI")
+        )
+
+        if not mongo_uri:
+
+            raise ValueError(
+                "CRITICAL: "
+                "MONGO_URI or MONGODB_URI "
+                "environment variable is missing."
+            )
+
+        self.client = AsyncIOMotorClient(
+            mongo_uri
+        )
+
+        self.db = self.client[
+            "bolt_multi_server_db"
+        ]
+
+        # =====================================================
+        # Collections
+        # =====================================================
+
+        self.settings = self.db[
+            "global_settings"
+        ]
+
+        self.server_links = self.db[
+            "server_links"
+        ]
+
+        self.leveling = self.db[
+            "user_levels"
+        ]
+
+        self.reception = self.db[
+            "reception_config"
+        ]
+
+        self.jobs = self.db[
+            "hr_jobs"
+        ]
+
+        self.applications = self.db[
+            "hr_applications"
+        ]
+
+        self.hr_logs = self.db[
+            "hr_action_logs"
+        ]
+
+        self.staff_ranks = self.db[
+            "staff_ranks_dropdown"
+        ]
+
+        self.modmail_tickets = self.db[
+            "modmail_tickets"
+        ]
+
+        self.modmail_stats = self.db[
+            "modmail_performance_stats"
+        ]
+
+        self.mod_cases = self.db[
+            "moderation_cases"
+        ]
+
+        self.mod_users = self.db[
+            "moderation_user_profiles"
+        ]
+
+        self.sticky_messages = self.db[
+            "sticky_messages"
+        ]
+
+        self.staff_quota_profiles = self.db[
+            "staff_quota_profiles"
+        ]
+
+        self.staff_global_config = self.db[
+            "staff_global_config"
+        ]
+
+        self.blacklist = self.db[
+            "global_blacklist"
+        ]
+
+    # =========================================================
+    # Prefix Helpers
+    # =========================================================
+
+    async def get_guild_prefix(
         self,
-        user_id: int
+        guild_id: int
     ):
 
-        return (
-            user_id
-            in self.bot.DEVELOPER_IDS
-        )
+        try:
 
-    # =====================================================
-    # /LINKSERVERS
-    # =====================================================
+            doc = await self.settings.find_one({
+                "_id": f"prefix_{guild_id}"
+            })
 
-    @app_commands.command(
-        name="linkservers",
-        description=(
-            "Link a staff server "
-            "with a public server."
-        )
-    )
+            return (
+                doc["value"]
+                if doc
+                else None
+            )
 
-    async def linkservers(
+        except Exception as e:
+
+            print(
+                f"[Database Error] "
+                f"Failed to fetch prefix "
+                f"for guild {guild_id}: {e}"
+            )
+
+            return None
+
+    async def set_guild_prefix(
         self,
-        interaction: discord.Interaction,
-        staff_server_id: str,
-        public_server_id: str
+        guild_id: int,
+        prefix: str
     ):
 
-        if not self.is_developer(
-            interaction.user.id
-        ):
+        try:
 
-            return await interaction.response.send_message(
-                "❌ You are not a developer.",
-                ephemeral=True
+            await self.settings.update_one(
+
+                {
+                    "_id": f"prefix_{guild_id}"
+                },
+
+                {
+                    "$set": {
+                        "value": prefix
+                    }
+                },
+
+                upsert=True
             )
 
-        db_cog = self.bot.get_cog(
-            "DatabaseCog"
-        )
+        except Exception as e:
 
-        if not db_cog:
-
-            return await interaction.response.send_message(
-                "❌ Database system unavailable.",
-                ephemeral=True
+            print(
+                f"[Database Error] "
+                f"Failed to set prefix "
+                f"for guild {guild_id}: {e}"
             )
 
-        await db_cog.link_servers(
+    # =========================================================
+    # Server Link Helpers
+    # =========================================================
 
-            int(staff_server_id),
-            int(public_server_id)
-        )
-
-        embed = discord.Embed(
-            title="🔗 Servers Linked",
-            color=discord.Color.green()
-        )
-
-        embed.add_field(
-            name="Staff Server",
-            value=f"`{staff_server_id}`",
-            inline=False
-        )
-
-        embed.add_field(
-            name="Public Server",
-            value=f"`{public_server_id}`",
-            inline=False
-        )
-
-        await interaction.response.send_message(
-            embed=embed
-        )
-
-    # =====================================================
-    # /UNLINKSERVERS
-    # =====================================================
-
-    @app_commands.command(
-        name="unlinkservers",
-        description="Unlink linked servers."
-    )
-
-    async def unlinkservers(
+    async def get_server_link(
         self,
-        interaction: discord.Interaction,
-        staff_server_id: str
+        staff_guild_id: int
     ):
 
-        if not self.is_developer(
-            interaction.user.id
-        ):
+        try:
 
-            return await interaction.response.send_message(
-                "❌ You are not a developer.",
-                ephemeral=True
+            return await self.server_links.find_one({
+
+                "staff_guild_id": staff_guild_id
+
+            })
+
+        except Exception as e:
+
+            print(
+                f"[Database Error] "
+                f"Failed to fetch server link "
+                f"for staff guild "
+                f"{staff_guild_id}: {e}"
             )
 
-        db_cog = self.bot.get_cog(
-            "DatabaseCog"
-        )
+            return None
 
-        if not db_cog:
-
-            return await interaction.response.send_message(
-                "❌ Database unavailable.",
-                ephemeral=True
-            )
-
-        await db_cog.unlink_servers(
-            int(staff_server_id)
-        )
-
-        await interaction.response.send_message(
-            (
-                "✅ Server link removed "
-                "successfully."
-            )
-        )
-
-    # =====================================================
-    # /VIEWLINK
-    # =====================================================
-
-    @app_commands.command(
-        name="viewlink",
-        description="View linked server."
-    )
-
-    async def viewlink(
+    async def get_link_by_public(
         self,
-        interaction: discord.Interaction
+        public_guild_id: int
     ):
 
-        if not self.is_developer(
-            interaction.user.id
-        ):
+        try:
 
-            return await interaction.response.send_message(
-                "❌ You are not a developer.",
-                ephemeral=True
+            return await self.server_links.find_one({
+
+                "public_guild_id": public_guild_id
+
+            })
+
+        except Exception as e:
+
+            print(
+                f"[Database Error] "
+                f"Failed to fetch link "
+                f"for public guild "
+                f"{public_guild_id}: {e}"
             )
 
-        db_cog = self.bot.get_cog(
-            "DatabaseCog"
-        )
+            return None
 
-        if not db_cog:
+    async def link_servers(
+        self,
+        staff_guild_id: int,
+        public_guild_id: int
+    ):
 
-            return await interaction.response.send_message(
-                "❌ Database unavailable.",
-                ephemeral=True
+        try:
+
+            await self.server_links.update_one(
+
+                {
+                    "staff_guild_id": staff_guild_id
+                },
+
+                {
+                    "$set": {
+                        "public_guild_id": public_guild_id
+                    }
+                },
+
+                upsert=True
             )
 
-        data = await db_cog.get_server_link(
-            interaction.guild.id
-        )
+        except Exception as e:
 
-        if not data:
-
-            return await interaction.response.send_message(
-                "❌ No linked server found.",
-                ephemeral=True
+            print(
+                f"[Database Error] "
+                f"Failed to link "
+                f"staff {staff_guild_id} "
+                f"with public "
+                f"{public_guild_id}: {e}"
             )
 
-        embed = discord.Embed(
-            title="🔗 Linked Server",
-            color=discord.Color.blurple()
+    # =========================================================
+    # Unlink Servers
+    # =========================================================
+
+    async def unlink_servers(
+        self,
+        staff_guild_id: int
+    ):
+
+        try:
+
+            await self.server_links.delete_one({
+
+                "staff_guild_id": staff_guild_id
+
+            })
+
+        except Exception as e:
+
+            print(
+                f"[Database Error] "
+                f"Failed to unlink "
+                f"server {staff_guild_id}: {e}"
+            )
+
+    # =========================================================
+    # Get Staff Guild From Public Guild
+    # =========================================================
+
+    async def get_staff_guild(
+        self,
+        public_guild_id: int
+    ):
+
+        try:
+
+            return await self.server_links.find_one({
+
+                "public_guild_id": public_guild_id
+
+            })
+
+        except Exception as e:
+
+            print(
+                f"[Database Error] "
+                f"Failed to fetch "
+                f"staff guild for "
+                f"public guild "
+                f"{public_guild_id}: {e}"
+            )
+
+            return None
+
+    # =========================================================
+    # Get Public Guild From Staff Guild
+    # =========================================================
+
+    async def get_public_guild(
+        self,
+        staff_guild_id: int
+    ):
+
+        try:
+
+            return await self.server_links.find_one({
+
+                "staff_guild_id": staff_guild_id
+
+            })
+
+        except Exception as e:
+
+            print(
+                f"[Database Error] "
+                f"Failed to fetch "
+                f"public guild for "
+                f"staff guild "
+                f"{staff_guild_id}: {e}"
+            )
+
+            return None
+
+    # =========================================================
+    # Persistent View Restoration
+    # =========================================================
+
+    async def restore_persistent_views(self):
+
+        print(
+            "[Database Engine] "
+            "Restoring persistent views..."
         )
 
-        embed.add_field(
-            name="Staff Server",
-            value=f"`{data['staff_guild_id']}`",
-            inline=False
+        # =====================================================
+        # HR Application Review Buttons
+        # =====================================================
+
+        try:
+
+            async for app_doc in self.applications.find({
+
+                "status": "pending"
+
+            }):
+
+                app_id = str(app_doc["_id"])
+
+                job_name = app_doc.get(
+                    "job_name",
+                    "Unknown Position"
+                )
+
+                self.bot.add_view(
+                    ReviewButtons(
+                        self.bot,
+                        app_id,
+                        job_name
+                    )
+                )
+
+        except Exception as e:
+
+            print(
+                f"[View Restore] "
+                f"Failed to restore "
+                f"ReviewButtons: {e}"
+            )
+
+        # =====================================================
+        # Staff Quota Dashboard
+        # =====================================================
+
+        try:
+
+            self.bot.add_view(
+                StaffQuotaView(self.bot)
+            )
+
+        except Exception as e:
+
+            print(
+                f"[View Restore] "
+                f"Failed to restore "
+                f"StaffQuotaView: {e}"
+            )
+
+        # =====================================================
+        # Rank Dropdown
+        # =====================================================
+
+        try:
+
+            ranks_map = {}
+
+            async for r in self.staff_ranks.find():
+
+                ranks_map[
+                    r["name"]
+                ] = r.get(
+                    "description",
+                    ""
+                )
+
+            if not ranks_map:
+
+                ranks_map[
+                    "Default"
+                ] = (
+                    "Pending configuration."
+                )
+
+            self.bot.add_view(
+                RanksDropdownView(
+                    ranks_map
+                )
+            )
+
+        except Exception as e:
+
+            print(
+                f"[View Restore] "
+                f"Failed to restore "
+                f"RanksDropdownView: {e}"
+            )
+
+        # =====================================================
+        # Modmail Ticket Controls
+        # =====================================================
+
+        try:
+
+            async for ticket in self.modmail_tickets.find():
+
+                user_id = ticket.get(
+                    "user_id"
+                )
+
+                if user_id:
+
+                    self.bot.add_view(
+                        TicketControls(
+                            self.bot
+                        )
+                    )
+
+        except Exception as e:
+
+            print(
+                f"[View Restore] "
+                f"Failed to restore "
+                f"TicketControls: {e}"
+            )
+
+        print(
+            "[Database Engine] "
+            "Persistent view restoration complete."
         )
 
-        embed.add_field(
-            name="Public Server",
-            value=f"`{data['public_guild_id']}`",
-            inline=False
-        )
 
-        await interaction.response.send_message(
-            embed=embed,
-            ephemeral=True
-        )
-
+# =========================================================
+# Setup
+# =========================================================
 
 async def setup(bot):
 
     await bot.add_cog(
-        ServerLinkCog(bot)
+        DatabaseCog(bot)
     )
