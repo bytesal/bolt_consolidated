@@ -1,4 +1,6 @@
+import os
 import discord
+from discord import app_commands
 from discord.ext import commands
 import datetime
 
@@ -8,10 +10,12 @@ class TicketControls(discord.ui.View):
         self.bot = bot
         self.ticket_user_id = ticket_user_id
 
-    @discord.ui.button(label="Close Session", style=discord.ButtonStyle.red, custom_id="modmail_close_btn")
+    @discord.ui.button(label="Close Session", style=discord.ButtonStyle.red, custom_id="modmail_close_btn_default")
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         db_cog = self.bot.get_cog("DatabaseCog")
+        if not db_cog:
+            return await interaction.followup.send("❌ Core DB Connection Unavailable.", ephemeral=True)
         
         await db_cog.modmail_tickets.delete_one({"user_id": str(self.ticket_user_id)})
         await db_cog.modmail_stats.update_one(
@@ -20,7 +24,6 @@ class TicketControls(discord.ui.View):
             upsert=True
         )
 
-        # Notify target user frame cleanly
         public_user = self.bot.get_user(int(self.ticket_user_id))
         if public_user:
             try:
@@ -43,12 +46,9 @@ class ModmailCog(commands.Cog):
         if not db_cog:
             return
 
-        # Handle DM interface routing exclusively 
         if isinstance(message.channel, discord.DMChannel):
             ticket = await db_cog.modmail_tickets.find_one({"user_id": str(message.author.id)})
-            
-            # Map default links to forward DM to target staff frameworks
-            link = await db_cog.server_links.find_one() # Fallback mapping route structure
+            link = await db_cog.server_links.find_one()
             if not link:
                 return
             
@@ -57,7 +57,6 @@ class ModmailCog(commands.Cog):
                 return
 
             if not ticket:
-                # Construct new local channel structure inside staff ecosystem
                 overwrites = {
                     staff_guild.default_role: discord.PermissionOverwrite(read_messages=False),
                     staff_guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
@@ -81,7 +80,6 @@ class ModmailCog(commands.Cog):
                     embed.set_author(name=message.author.name, icon_url=message.author.display_avatar.url)
                     await chan.send(embed=embed)
 
-        # Handle staff typing inside channel loop to relay back down downstream context to user DM channel
         elif isinstance(message.channel, discord.TextChannel):
             ticket = await db_cog.modmail_tickets.find_one({"channel_id": str(message.channel.id)})
             if ticket:
@@ -94,19 +92,23 @@ class ModmailCog(commands.Cog):
                     except discord.Forbidden:
                         await message.channel.send("❌ Error transmitting packet frames back to target destination down link.")
 
-    @commands.command(name="staffstats")
-    async def staff_stats_report(self, ctx):
-        if not ctx.author.guild_permissions.manage_messages and ctx.author.id not in self.bot.DEVELOPER_IDS:
-            return await ctx.send("❌ Access Denied.")
+    @app_commands.command(name="staffstats", description="Retrieve operational performance tracking vectors and resolution metrics analytics.")
+    async def staff_stats_report(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.manage_messages and interaction.user.id not in self.bot.DEVELOPER_IDS:
+            return await interaction.response.send_message("❌ Access Denied.", ephemeral=True)
+            
         db_cog = self.bot.get_cog("DatabaseCog")
+        if not db_cog:
+            return await interaction.response.send_message("❌ Core DB Connection Unavailable.", ephemeral=True)
+            
         stats = await db_cog.modmail_stats.find().to_list(None)
         if not stats:
-            return await ctx.send("📊 Data pools empty. Performance vectors tracking dry.")
+            return await interaction.response.send_message("📊 Data pools empty. Performance vectors tracking dry.")
 
         embed = discord.Embed(title="📊 Support Performance Matrices", color=discord.Color.gold())
         for st in stats:
             embed.add_field(name=st.get("name", "Unknown Operator"), value=f"Resolved Interfaces: `{st.get('tickets_closed', 0)}`", inline=False)
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(ModmailCog(bot))
