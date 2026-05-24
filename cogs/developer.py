@@ -27,37 +27,6 @@ class DeveloperCog(commands.Cog):
         )
 
     # =====================================================
-    # /SYNC
-    # =====================================================
-
-    @app_commands.command(
-        name="sync",
-        description="Sync all slash commands."
-    )
-    async def sync(
-        self,
-        interaction: discord.Interaction
-    ):
-
-        await interaction.response.defer(
-            ephemeral=True
-        )
-
-        try:
-
-            synced = await self.bot.tree.sync()
-
-            await interaction.followup.send(
-                f"✅ Synced {len(synced)} commands."
-            )
-
-        except Exception as e:
-
-            await interaction.followup.send(
-                f"❌ Sync failed:\n```py\n{e}\n```"
-            )
-
-    # =====================================================
     # /LOAD
     # =====================================================
 
