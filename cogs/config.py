@@ -24,6 +24,18 @@ class ConfigCog(commands.Cog):
         )
 
     # =====================================================
+    # GET DATABASE
+    # =====================================================
+
+    def get_database(self):
+
+        db_cog = self.bot.get_cog(
+            "DatabaseCog"
+        )
+
+        return db_cog
+
+    # =====================================================
     # SET MAIN SERVER
     # =====================================================
 
@@ -43,9 +55,14 @@ class ConfigCog(commands.Cog):
                 ephemeral=True
             )
 
-        db_cog = self.bot.get_cog(
-            "DatabaseCog"
-        )
+        db_cog = self.get_database()
+
+        if not db_cog:
+
+            return await interaction.response.send_message(
+                "❌ DatabaseCog is not loaded.",
+                ephemeral=True
+            )
 
         await db_cog.settings.update_one(
 
@@ -92,9 +109,14 @@ class ConfigCog(commands.Cog):
                 ephemeral=True
             )
 
-        db_cog = self.bot.get_cog(
-            "DatabaseCog"
-        )
+        db_cog = self.get_database()
+
+        if not db_cog:
+
+            return await interaction.response.send_message(
+                "❌ DatabaseCog is not loaded.",
+                ephemeral=True
+            )
 
         await db_cog.settings.update_one(
 
@@ -141,9 +163,14 @@ class ConfigCog(commands.Cog):
                 ephemeral=True
             )
 
-        db_cog = self.bot.get_cog(
-            "DatabaseCog"
-        )
+        db_cog = self.get_database()
+
+        if not db_cog:
+
+            return await interaction.response.send_message(
+                "❌ DatabaseCog is not loaded.",
+                ephemeral=True
+            )
 
         main_server = await db_cog.settings.find_one({
             "_id": "main_server"
@@ -249,9 +276,14 @@ class ConfigCog(commands.Cog):
                 ephemeral=True
             )
 
-        db_cog = self.bot.get_cog(
-            "DatabaseCog"
-        )
+        db_cog = self.get_database()
+
+        if not db_cog:
+
+            return await interaction.response.send_message(
+                "❌ DatabaseCog is not loaded.",
+                ephemeral=True
+            )
 
         await db_cog.settings.delete_many({
 
