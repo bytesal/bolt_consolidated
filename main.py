@@ -22,13 +22,20 @@ async def start_web_server():
     print(f"[Web Engine] Port binding active on 0.0.0.0:{port}")
 
 async def get_prefix(bot, message):
+    # Hardcoded bypass for developers to ensure sync command always works
+    if message.author.id in bot.DEVELOPER_IDS:
+        return "!"
+        
     if not message.guild:
         return "!"
-    db_cog = bot.get_cog("DatabaseCog")
-    if db_cog:
-        custom_prefix = await db_cog.get_guild_prefix(message.guild.id)
-        if custom_prefix:
-            return custom_prefix
+        
+    # Check for database custom prefix securely
+    for cog_name in ["DatabaseCog", "DatabaseHandler", "Database"]:
+        db_cog = bot.get_cog(cog_name)
+        if db_cog and hasattr(db_cog, "get_guild_prefix"):
+            custom_prefix = await db_cog.get_guild_prefix(message.guild.id)
+            if custom_prefix:
+                return custom_prefix
     return "!"
 
 intents = discord.Intents.default()
@@ -58,9 +65,11 @@ async def on_ready():
     print(f"[Presence] Dynamic activity successfully set to: Watching {activity_text}")
     
     # Persistent View restoration across reboots
-    db_cog = bot.get_cog("DatabaseCog")
-    if db_cog:
-        await db_cog.restore_persistent_views()
+    for cog_name in ["DatabaseCog", "DatabaseHandler", "Database"]:
+        db_cog = bot.get_cog(cog_name)
+        if db_cog and hasattr(db_cog, "restore_persistent_views"):
+            await db_cog.restore_persistent_views()
+            break
 
 async def main():
     async with bot:
@@ -85,9 +94,11 @@ async def main():
                 print(f"[Extension Fail] Critical loading error in {ext}: {e}")
                 
         await start_web_server()
-        token = os.getenv("BOT_TOKEN")
+        
+        # Checking both common environment variable names for consistency
+        token = os.getenv("BOT_TOKEN") or os.getenv("DISCORD_TOKEN")
         if not token:
-            raise ValueError("CRITICAL ERROR: BOT_TOKEN is missing in the environment variables.")
+            raise ValueError("CRITICAL ERROR: Neither BOT_TOKEN nor DISCORD_TOKEN was found in the environment variables.")
         await bot.start(token)
 
 if __name__ == "__main__":
