@@ -1,7 +1,8 @@
 import os
 import sys
 import asyncio
-from aiohttp import web
+from flask import Flask
+from threading import Thread
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
@@ -52,40 +53,23 @@ class BoltBot(commands.Bot):
         print("✅ Slash commands synced automatically.")
 
 # =========================================================
-# Web Server (Render Keep Alive)
+# Web Server (Flask Keep Alive)
 # =========================================================
 
-async def handle_ping(request):
+app = Flask('')
 
-    return web.Response(
-        text="Bolt Multi-Server Engine is alive and responsive."
-    )
+@app.route('/')
+def home():
+    return "Bolt Multi-Server Engine is alive and responsive."
 
-
-async def start_web_server():
-
-    app = web.Application()
-
-    app.router.add_get("/", handle_ping)
-
-    runner = web.AppRunner(app)
-
-    await runner.setup()
-
+def run_flask():
     port = int(os.getenv("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
 
-    site = web.TCPSite(
-        runner,
-        "0.0.0.0",
-        port
-    )
-
-    await site.start()
-
-    print(
-        f"[Web Engine] "
-        f"Port binding active on 0.0.0.0:{port}"
-    )
+def start_web_server():
+    t = Thread(target=run_flask)
+    t.start()
+    print(f"[Web Engine] Flask server thread started.")
 
 # =========================================================
 # Dynamic Prefix Resolver
@@ -260,12 +244,15 @@ async def on_command_error(ctx, error):
 # =========================================================
 
 async def main():
+    # Start Flask Web Server
+    start_web_server()
+    
     async with bot:
-        # Start Web Server and Bot concurrently
-        await asyncio.gather(
-            start_web_server(),
-            bot.start(os.getenv("BOT_TOKEN") or os.getenv("DISCORD_TOKEN"))
-        )
+        token = os.getenv("BOT_TOKEN") or os.getenv("DISCORD_TOKEN")
+        if not token:
+            raise ValueError("CRITICAL ERROR: No token found.")
+
+        await bot.start(token)
 
 if __name__ == "__main__":
     asyncio.run(main())
