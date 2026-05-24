@@ -1,9 +1,13 @@
 import os
+import sys
 import asyncio
 from aiohttp import web
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, BASE_DIR)
 
 load_dotenv()
 
@@ -22,14 +26,13 @@ async def start_web_server():
     print(f"[Web Engine] Port binding active on 0.0.0.0:{port}")
 
 async def get_prefix(bot, message):
-    # Hardcoded bypass for developers to ensure dynamic prefix checks
     if message.author.id in bot.DEVELOPER_IDS:
         return "!"
         
     if not message.guild:
         return "!"
         
-    # Check for database custom prefix securely
+    # Check for database custom prefix securely across common cog name variants
     for cog_name in ["DatabaseCog", "DatabaseHandler", "Database"]:
         db_cog = bot.get_cog(cog_name)
         if db_cog and hasattr(db_cog, "get_guild_prefix"):
@@ -83,25 +86,19 @@ async def on_ready():
 
 async def main():
     async with bot:
-        # Load DB engine first before structural extensions
-        await bot.load_extension("cogs.database")
-        
-        extensions = [
-            "cogs.core",
-            "cogs.leveling",
-            "cogs.reception",
-            "cogs.applications",
-            "cogs.modmail",
-            "cogs.moderation",
-            "cogs.sticky",
-            "cogs.staff_quota"
-        ]
-        for ext in extensions:
-            try:
-                await bot.load_extension(ext)
-                print(f"[Extension] Successfully attached {ext}")
-            except Exception as e:
-                print(f"[Extension Fail] Critical loading error in {ext}: {e}")
+        # Step 1: Securely dynamic loading of all files within the cogs directory
+        cogs_dir = os.path.join(BASE_DIR, "cogs")
+        if os.path.exists(cogs_dir):
+            for filename in os.listdir(cogs_dir):
+                if filename.endswith(".py") and not filename.startswith("__"):
+                    cog_name = filename[:-3]
+                    try:
+                        await bot.load_extension(f"cogs.{cog_name}")
+                        print(f"[Extension] Successfully attached dynamic cog: cogs.{cog_name}")
+                    except Exception as e:
+                        print(f"[Extension Fail] Dynamic critical loading error in cogs.{cog_name}: {e}")
+        else:
+            print(f"[Critical Error] Target cogs directory path not resolved at: {cogs_dir}")
                 
         await start_web_server()
         
