@@ -102,6 +102,14 @@ class DatabaseCog(commands.Cog):
             "staff_global_config"
         ]
 
+        # =====================================================
+        # Global Blacklist Collection
+        # =====================================================
+
+        self.blacklist = self.db[
+            "global_blacklist"
+        ]
+
     # =========================================================
     # Prefix Helpers
     # =========================================================
