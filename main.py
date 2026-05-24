@@ -261,14 +261,11 @@ async def on_command_error(ctx, error):
 
 async def main():
     async with bot:
-        # Start Web Server
-        await start_web_server()
-
-        token = os.getenv("BOT_TOKEN") or os.getenv("DISCORD_TOKEN")
-        if not token:
-            raise ValueError("CRITICAL ERROR: No token found.")
-
-        await bot.start(token)
+        # Start Web Server and Bot concurrently
+        await asyncio.gather(
+            start_web_server(),
+            bot.start(os.getenv("BOT_TOKEN") or os.getenv("DISCORD_TOKEN"))
+        )
 
 if __name__ == "__main__":
     asyncio.run(main())
