@@ -8,16 +8,6 @@ from discord.ext import commands
 from dotenv import load_dotenv
 
 # =========================================================
-# Import Persistent Views
-# =========================================================
-
-from cogs.help import HelpView
-from cogs.modmail import (
-    TicketCategoryView,
-    OpenTicketButton
-)
-
-# =========================================================
 # Base Directory
 # =========================================================
 
@@ -78,7 +68,7 @@ class BoltBot(commands.Bot):
 
         if os.path.exists(cogs_dir):
 
-            for filename in os.listdir(cogs_dir):
+            for filename in sorted(os.listdir(cogs_dir)):
 
                 if (
                     filename.endswith(".py")
@@ -382,30 +372,29 @@ async def on_ready():
 
     try:
 
-        bot.add_view(
-            HelpView()
-        )
-
-        bot.add_view(
-            TicketCategoryView(bot)
-        )
-
-        bot.add_view(
-            OpenTicketButton()
-        )
-
-        print(
-            "[Views] Persistent views "
-            "restored successfully."
-        )
+        from cogs.help import HelpView
+        bot.add_view(HelpView())
+        print("[Views] HelpView restored.")
 
     except Exception as e:
 
-        print(
-            f"[Views Fail] "
-            f"Failed restoring "
-            f"persistent views: {e}"
-        )
+        print(f"[Views Fail] HelpView: {e}")
+
+    try:
+
+        from cogs.modmail import TicketCategoryView, OpenTicketButton
+        bot.add_view(TicketCategoryView(bot))
+        bot.add_view(OpenTicketButton())
+        print("[Views] Modmail views restored.")
+
+    except Exception as e:
+
+        print(f"[Views Fail] Modmail views: {e}")
+
+    print(
+        "[Views] Persistent views "
+        "restoration complete."
+    )
 
     # =====================================================
     # Restore Database Persistent Views
