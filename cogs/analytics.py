@@ -62,6 +62,13 @@ class AnalyticsCog(commands.Cog):
             "DatabaseCog"
         )
 
+        if not db_cog:
+
+            return await interaction.response.send_message(
+                "❌ DatabaseCog is not loaded.",
+                ephemeral=True
+            )
+
         # =================================================
         # COUNTS
         # =================================================
@@ -72,7 +79,7 @@ class AnalyticsCog(commands.Cog):
 
         user_count = sum(
 
-            guild.member_count
+            guild.member_count or 0
             for guild
             in self.bot.guilds
 
