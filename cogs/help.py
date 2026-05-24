@@ -123,6 +123,8 @@ class HelpDropdown(discord.ui.Select):
                 "`/ban` → Ban a member.",
                 "`/history` → View moderation history.",
                 "`/setmodlog` → Configure moderation logs.",
+                "`/purge` → Delete messages.",
+                "`/purgeuser` → Delete messages from a user.",
             ]
 
             embed.add_field(
