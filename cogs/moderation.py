@@ -1,3 +1,4 @@
+```python
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
@@ -30,42 +31,92 @@ class ModerationCog(commands.Cog):
     # UTILITIES
     # =========================================================
 
-    async def get_main_guild(self):
-
-        db_cog = self.bot.get_cog(
-            "DatabaseCog"
-        )
-
-        config = await db_cog.settings.find_one({
-            "_id": "main_server"
-        })
-
-        if not config:
-            return None
-
-        return self.bot.get_guild(
-            int(config["guild_id"])
-        )
-
-    async def staff_server_only(
+    async def get_linked_servers(
         self,
-        interaction: discord.Interaction
+        guild_id: int
     ):
 
         db_cog = self.bot.get_cog(
             "DatabaseCog"
         )
 
-        config = await db_cog.settings.find_one({
-            "_id": "staff_server"
-        })
+        if not db_cog:
+            return None, None
 
-        if not config:
+        # ============================================
+        # If current guild is STAFF server
+        # ============================================
+
+        data = await db_cog.get_server_link(
+            guild_id
+        )
+
+        if data:
+
+            staff_guild = self.bot.get_guild(
+                int(data["staff_guild_id"])
+            )
+
+            public_guild = self.bot.get_guild(
+                int(data["public_guild_id"])
+            )
+
+            return staff_guild, public_guild
+
+        # ============================================
+        # If current guild is PUBLIC server
+        # ============================================
+
+        data = await db_cog.get_link_by_public(
+            guild_id
+        )
+
+        if data:
+
+            staff_guild = self.bot.get_guild(
+                int(data["staff_guild_id"])
+            )
+
+            public_guild = self.bot.get_guild(
+                int(data["public_guild_id"])
+            )
+
+            return staff_guild, public_guild
+
+        return None, None
+
+    async def ensure_staff_server(
+        self,
+        interaction: discord.Interaction
+    ):
+
+        staff_guild, public_guild = await self.get_linked_servers(
+            interaction.guild.id
+        )
+
+        if not staff_guild:
             return False
 
         return (
             interaction.guild.id
-            == int(config["guild_id"])
+            == staff_guild.id
+        )
+
+    async def get_public_member(
+        self,
+        interaction: discord.Interaction,
+        target_id: int
+    ):
+
+        staff_guild, public_guild = await self.get_linked_servers(
+            interaction.guild.id
+        )
+
+        if not public_guild:
+            return None
+
+        return public_guild.get_member(
+            target_id
         )
 
     async def generate_case(self):
@@ -82,17 +133,21 @@ class ModerationCog(commands.Cog):
         duration=None,
     ):
 
-        db_cog = self.bot.get_cog("DatabaseCog")
+        db_cog = self.bot.get_cog(
+            "DatabaseCog"
+        )
+
+        _, public_guild = await self.get_linked_servers(
+            interaction.guild.id
+        )
 
         case_id = await self.generate_case()
-
-        main_guild = await self.get_main_guild()
 
         await db_cog.mod_cases.insert_one({
 
             "case_id": case_id,
 
-            "guild_id": str(main_guild.id),
+            "guild_id": str(public_guild.id),
 
             "action": action,
 
@@ -214,16 +269,25 @@ class ModerationCog(commands.Cog):
         duration=None,
     ):
 
-        db_cog = self.bot.get_cog("DatabaseCog")
+        db_cog = self.bot.get_cog(
+            "DatabaseCog"
+        )
+
+        staff_guild, public_guild = await self.get_linked_servers(
+            interaction.guild.id
+        )
+
+        if not staff_guild:
+            return
 
         config = await db_cog.settings.find_one({
-            "_id": f"modlog_{interaction.guild.id}"
+            "_id": f"modlog_{staff_guild.id}"
         })
 
         if not config:
             return
 
-        channel = interaction.guild.get_channel(
+        channel = staff_guild.get_channel(
             int(config["value"])
         )
 
@@ -311,9 +375,7 @@ class ModerationCog(commands.Cog):
 
         elif punishment == "ban":
 
-            main_guild = await self.get_main_guild()
-
-            await main_guild.ban(
+            await target.guild.ban(
                 target,
                 reason=reason
             )
@@ -337,7 +399,9 @@ class ModerationCog(commands.Cog):
         channel: discord.TextChannel
     ):
 
-        db_cog = self.bot.get_cog("DatabaseCog")
+        db_cog = self.bot.get_cog(
+            "DatabaseCog"
+        )
 
         await db_cog.settings.update_one(
 
@@ -377,30 +441,20 @@ class ModerationCog(commands.Cog):
             ephemeral=True
         )
 
-        if not await self.staff_server_only(
+        if not await self.ensure_staff_server(
             interaction
         ):
 
             return await interaction.followup.send(
 
                 "❌ This command can only be used "
-                "inside the staff server.",
+                "inside the linked staff server.",
 
                 ephemeral=True
             )
 
-        main_guild = await self.get_main_guild()
-
-        if not main_guild:
-
-            return await interaction.followup.send(
-
-                "❌ Main server is not configured.",
-
-                ephemeral=True
-            )
-
-        target = main_guild.get_member(
+        target = await self.get_public_member(
+            interaction,
             target.id
         )
 
@@ -408,12 +462,14 @@ class ModerationCog(commands.Cog):
 
             return await interaction.followup.send(
 
-                "❌ User not found in main server.",
+                "❌ User not found in linked public server.",
 
                 ephemeral=True
             )
 
-        db_cog = self.bot.get_cog("DatabaseCog")
+        db_cog = self.bot.get_cog(
+            "DatabaseCog"
+        )
 
         await db_cog.mod_users.update_one(
 
@@ -428,7 +484,10 @@ class ModerationCog(commands.Cog):
             "_id": str(target.id)
         })
 
-        warnings = profile.get("warnings", 0)
+        warnings = profile.get(
+            "warnings",
+            0
+        )
 
         case_id = await self.create_case(
             interaction,
@@ -438,9 +497,13 @@ class ModerationCog(commands.Cog):
             evidence
         )
 
+        _, public_guild = await self.get_linked_servers(
+            interaction.guild.id
+        )
+
         await self.send_dm(
             target,
-            main_guild,
+            public_guild,
             "Warn",
             reason,
             case_id,
@@ -495,7 +558,7 @@ class ModerationCog(commands.Cog):
             ephemeral=True
         )
 
-        if not await self.staff_server_only(
+        if not await self.ensure_staff_server(
             interaction
         ):
 
@@ -504,9 +567,8 @@ class ModerationCog(commands.Cog):
                 ephemeral=True
             )
 
-        main_guild = await self.get_main_guild()
-
-        target = main_guild.get_member(
+        target = await self.get_public_member(
+            interaction,
             target.id
         )
 
@@ -536,9 +598,13 @@ class ModerationCog(commands.Cog):
             minutes * 60
         )
 
+        _, public_guild = await self.get_linked_servers(
+            interaction.guild.id
+        )
+
         await self.send_dm(
             target,
-            main_guild,
+            public_guild,
             "Timeout",
             reason,
             case_id,
@@ -587,7 +653,7 @@ class ModerationCog(commands.Cog):
             ephemeral=True
         )
 
-        if not await self.staff_server_only(
+        if not await self.ensure_staff_server(
             interaction
         ):
 
@@ -596,9 +662,8 @@ class ModerationCog(commands.Cog):
                 ephemeral=True
             )
 
-        main_guild = await self.get_main_guild()
-
-        target = main_guild.get_member(
+        target = await self.get_public_member(
+            interaction,
             target.id
         )
 
@@ -617,9 +682,13 @@ class ModerationCog(commands.Cog):
             evidence
         )
 
+        _, public_guild = await self.get_linked_servers(
+            interaction.guild.id
+        )
+
         await self.send_dm(
             target,
-            main_guild,
+            public_guild,
             "Ban",
             reason,
             case_id,
@@ -627,7 +696,7 @@ class ModerationCog(commands.Cog):
             evidence
         )
 
-        await main_guild.ban(
+        await public_guild.ban(
             target,
             reason=reason
         )
@@ -670,7 +739,7 @@ class ModerationCog(commands.Cog):
             ephemeral=True
         )
 
-        if not await self.staff_server_only(
+        if not await self.ensure_staff_server(
             interaction
         ):
 
@@ -679,9 +748,8 @@ class ModerationCog(commands.Cog):
                 ephemeral=True
             )
 
-        main_guild = await self.get_main_guild()
-
-        target = main_guild.get_member(
+        target = await self.get_public_member(
+            interaction,
             target.id
         )
 
@@ -700,9 +768,13 @@ class ModerationCog(commands.Cog):
             evidence
         )
 
+        _, public_guild = await self.get_linked_servers(
+            interaction.guild.id
+        )
+
         await self.send_dm(
             target,
-            main_guild,
+            public_guild,
             "Kick",
             reason,
             case_id,
@@ -810,3 +882,4 @@ async def setup(bot):
     await bot.add_cog(
         ModerationCog(bot)
     )
+```
