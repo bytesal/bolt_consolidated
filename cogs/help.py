@@ -54,6 +54,24 @@ class HelpDropdown(discord.ui.Select):
                 emoji="👥",
                 description="View staff management commands."
             ),
+
+            discord.SelectOption(
+                label="AutoMod",
+                emoji="🤖",
+                description="View automod commands."
+            ),
+
+            discord.SelectOption(
+                label="Analytics",
+                emoji="📊",
+                description="View analytics commands."
+            ),
+
+            discord.SelectOption(
+                label="Developer",
+                emoji="🧑‍💻",
+                description="View developer commands."
+            ),
         ]
 
         super().__init__(
@@ -268,6 +286,93 @@ class HelpDropdown(discord.ui.Select):
                 inline=False
             )
 
+        # =====================================================
+        # AUTOMOD
+        # =====================================================
+
+        elif category == "AutoMod":
+
+            embed.title = "🤖 AutoMod Commands"
+
+            embed.description = (
+                "Advanced automatic moderation system."
+            )
+
+            commands_list = [
+
+                "`!automod links true/false` → Enable or disable anti-links.",
+
+                "`!automod spam true/false` → Enable or disable anti-spam.",
+
+                "`!automod mentions true/false` → Enable or disable anti-mention spam.",
+
+                "`!automod allowads` → Allow advertisements in current channel.",
+
+                "`!automod removeads` → Remove advertisements from current channel."
+            ]
+
+            embed.add_field(
+                name="Commands",
+                value="\n".join(commands_list),
+                inline=False
+            )
+
+        # =====================================================
+        # ANALYTICS
+        # =====================================================
+
+        elif category == "Analytics":
+
+            embed.title = "📊 Analytics Commands"
+
+            embed.description = (
+                "Bot analytics and statistics."
+            )
+
+            commands_list = [
+
+                "`/dashboard` → View analytics dashboard.",
+
+                "`/botstats` → View detailed bot stats."
+            ]
+
+            embed.add_field(
+                name="Commands",
+                value="\n".join(commands_list),
+                inline=False
+            )
+
+        # =====================================================
+        # DEVELOPER
+        # =====================================================
+
+        elif category == "Developer":
+
+            embed.title = "🧑‍💻 Developer Commands"
+
+            embed.description = (
+                "Developer-only management commands."
+            )
+
+            commands_list = [
+
+                "`/devpanel` → Open developer panel.",
+
+                "`/blacklistuser` → Blacklist a user globally.",
+
+                "`/unblacklistuser` → Remove user blacklist.",
+
+                "`/blacklistguild` → Blacklist a guild globally.",
+
+                "`/unblacklistguild` → Remove guild blacklist."
+            ]
+
+            embed.add_field(
+                name="Commands",
+                value="\n".join(commands_list),
+                inline=False
+            )
+
         embed.set_footer(
             text=f"Requested by {interaction.user}",
             icon_url=interaction.user.display_avatar.url
@@ -332,7 +437,10 @@ class HelpCog(commands.Cog):
                 "📄 Applications\n"
                 "📈 Leveling\n"
                 "⚙️ Utility\n"
-                "👥 Staff"
+                "👥 Staff\n"
+                "🤖 AutoMod\n"
+                "📊 Analytics\n"
+                "🧑‍💻 Developer"
 
             ),
             inline=False
