@@ -1,4 +1,6 @@
+import os
 import discord
+from discord import app_commands
 from discord.ext import commands
 
 class LevelingCog(commands.Cog):
@@ -43,21 +45,25 @@ class LevelingCog(commands.Cog):
             upsert=True
         )
 
-    @commands.command(name="rank")
-    async def rank_command(self, ctx, member: discord.Member = None):
-        member = member or ctx.author
+    @app_commands.command(name="rank", description="Evaluate localized structural leveling and progression values metrics.")
+    @app_commands.describe(member="Target guild user asset footprint parameter query.")
+    async def rank_command(self, interaction: discord.Interaction, member: discord.Member = None):
+        target_member = member or interaction.user
         db_cog = self.bot.get_cog("DatabaseCog")
-        guild_id = str(ctx.guild.id)
-        user_id = str(member.id)
+        if not db_cog:
+            return await interaction.response.send_message("❌ Core DB Connection Unavailable.", ephemeral=True)
+
+        guild_id = str(interaction.guild.id)
+        user_id = str(target_member.id)
 
         doc = await db_cog.leveling.find_one({"user_id": user_id, "guild_id": guild_id})
         if not doc:
             doc = {"xp": 0, "level": 1}
 
-        embed = discord.Embed(title=f"Progression Record — {member.name}", color=discord.Color.magenta())
+        embed = discord.Embed(title=f"Progression Record — {target_member.name}", color=discord.Color.magenta())
         embed.add_field(name="Current Rank Value", value=f"Level {doc.get('level', 1)}", inline=True)
         embed.add_field(name="Accumulated XP Pool", value=f"{doc.get('xp', 0)} / {doc.get('level', 1) * 200} XP", inline=True)
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(LevelingCog(bot))
