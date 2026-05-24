@@ -8,9 +8,9 @@ from utils.checks import staff_or_developer
 
 
 WARNING_THRESHOLDS = {
-    3: ("timeout", 60 * 60),        # 1 hour
-    5: ("mute", 60 * 60 * 24),      # 1 day
-    7: ("ban", None),               # permanent
+    3: ("timeout", 60 * 60),
+    5: ("mute", 60 * 60 * 24),
+    7: ("ban", None),
 }
 
 
@@ -27,27 +27,46 @@ class ModerationCog(commands.Cog):
         self.temp_punishment_loop.cancel()
 
     # =========================================================
-    # Permission Checks
+    # UTILITIES
     # =========================================================
 
-    def has_mod_perms(
+    async def get_main_guild(self):
+
+        db_cog = self.bot.get_cog(
+            "DatabaseCog"
+        )
+
+        config = await db_cog.settings.find_one({
+            "_id": "main_server"
+        })
+
+        if not config:
+            return None
+
+        return self.bot.get_guild(
+            int(config["guild_id"])
+        )
+
+    async def staff_server_only(
         self,
         interaction: discord.Interaction
     ):
 
-        return (
-
-            interaction.user.guild_permissions.moderate_members
-            or interaction.user.guild_permissions.manage_messages
-            or interaction.user.guild_permissions.ban_members
-            or interaction.user.guild_permissions.kick_members
-            or interaction.user.id in self.bot.DEVELOPER_IDS
-
+        db_cog = self.bot.get_cog(
+            "DatabaseCog"
         )
 
-    # =========================================================
-    # Utilities
-    # =========================================================
+        config = await db_cog.settings.find_one({
+            "_id": "staff_server"
+        })
+
+        if not config:
+            return False
+
+        return (
+            interaction.guild.id
+            == int(config["guild_id"])
+        )
 
     async def generate_case(self):
 
@@ -67,10 +86,13 @@ class ModerationCog(commands.Cog):
 
         case_id = await self.generate_case()
 
+        main_guild = await self.get_main_guild()
+
         await db_cog.mod_cases.insert_one({
 
             "case_id": case_id,
-            "guild_id": str(interaction.guild.id),
+
+            "guild_id": str(main_guild.id),
 
             "action": action,
 
@@ -289,7 +311,9 @@ class ModerationCog(commands.Cog):
 
         elif punishment == "ban":
 
-            await interaction.guild.ban(
+            main_guild = await self.get_main_guild()
+
+            await main_guild.ban(
                 target,
                 reason=reason
             )
@@ -353,6 +377,42 @@ class ModerationCog(commands.Cog):
             ephemeral=True
         )
 
+        if not await self.staff_server_only(
+            interaction
+        ):
+
+            return await interaction.followup.send(
+
+                "❌ This command can only be used "
+                "inside the staff server.",
+
+                ephemeral=True
+            )
+
+        main_guild = await self.get_main_guild()
+
+        if not main_guild:
+
+            return await interaction.followup.send(
+
+                "❌ Main server is not configured.",
+
+                ephemeral=True
+            )
+
+        target = main_guild.get_member(
+            target.id
+        )
+
+        if not target:
+
+            return await interaction.followup.send(
+
+                "❌ User not found in main server.",
+
+                ephemeral=True
+            )
+
         db_cog = self.bot.get_cog("DatabaseCog")
 
         await db_cog.mod_users.update_one(
@@ -380,7 +440,7 @@ class ModerationCog(commands.Cog):
 
         await self.send_dm(
             target,
-            interaction.guild,
+            main_guild,
             "Warn",
             reason,
             case_id,
@@ -431,6 +491,32 @@ class ModerationCog(commands.Cog):
         evidence: str = None
     ):
 
+        await interaction.response.defer(
+            ephemeral=True
+        )
+
+        if not await self.staff_server_only(
+            interaction
+        ):
+
+            return await interaction.followup.send(
+                "❌ Staff server only.",
+                ephemeral=True
+            )
+
+        main_guild = await self.get_main_guild()
+
+        target = main_guild.get_member(
+            target.id
+        )
+
+        if not target:
+
+            return await interaction.followup.send(
+                "❌ User not found.",
+                ephemeral=True
+            )
+
         until = (
             datetime.utcnow()
             + timedelta(minutes=minutes)
@@ -452,7 +538,7 @@ class ModerationCog(commands.Cog):
 
         await self.send_dm(
             target,
-            interaction.guild,
+            main_guild,
             "Timeout",
             reason,
             case_id,
@@ -472,65 +558,8 @@ class ModerationCog(commands.Cog):
             f"{minutes} minutes"
         )
 
-        await interaction.response.send_message(
-            f"✅ {target.mention} timed out "
-            f"for {minutes} minutes."
-        )
-
-    # =========================================================
-    # KICK
-    # =========================================================
-
-    @app_commands.command(
-        name="kick",
-        description="Kick a member."
-    )
-
-    @staff_or_developer(
-        kick_members=True
-    )
-
-    async def kick(
-        self,
-        interaction: discord.Interaction,
-        target: discord.Member,
-        reason: str,
-        evidence: str = None
-    ):
-
-        case_id = await self.create_case(
-            interaction,
-            "kick",
-            target,
-            reason,
-            evidence
-        )
-
-        await self.send_dm(
-            target,
-            interaction.guild,
-            "Kick",
-            reason,
-            case_id,
-            interaction.user,
-            evidence
-        )
-
-        await target.kick(
-            reason=reason
-        )
-
-        await self.log_action(
-            interaction,
-            "kick",
-            target,
-            reason,
-            case_id,
-            evidence
-        )
-
-        await interaction.response.send_message(
-            f"✅ {target} kicked successfully."
+        await interaction.followup.send(
+            f"✅ {target.mention} timed out."
         )
 
     # =========================================================
@@ -554,6 +583,32 @@ class ModerationCog(commands.Cog):
         evidence: str = None
     ):
 
+        await interaction.response.defer(
+            ephemeral=True
+        )
+
+        if not await self.staff_server_only(
+            interaction
+        ):
+
+            return await interaction.followup.send(
+                "❌ Staff server only.",
+                ephemeral=True
+            )
+
+        main_guild = await self.get_main_guild()
+
+        target = main_guild.get_member(
+            target.id
+        )
+
+        if not target:
+
+            return await interaction.followup.send(
+                "❌ User not found.",
+                ephemeral=True
+            )
+
         case_id = await self.create_case(
             interaction,
             "ban",
@@ -564,7 +619,7 @@ class ModerationCog(commands.Cog):
 
         await self.send_dm(
             target,
-            interaction.guild,
+            main_guild,
             "Ban",
             reason,
             case_id,
@@ -572,7 +627,7 @@ class ModerationCog(commands.Cog):
             evidence
         )
 
-        await interaction.guild.ban(
+        await main_guild.ban(
             target,
             reason=reason
         )
@@ -586,24 +641,24 @@ class ModerationCog(commands.Cog):
             evidence
         )
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"✅ {target} banned successfully."
         )
 
     # =========================================================
-    # SOFTBAN
+    # KICK
     # =========================================================
 
     @app_commands.command(
-        name="softban",
-        description="Softban a member."
+        name="kick",
+        description="Kick a member."
     )
 
     @staff_or_developer(
-        ban_members=True
+        kick_members=True
     )
 
-    async def softban(
+    async def kick(
         self,
         interaction: discord.Interaction,
         target: discord.Member,
@@ -611,9 +666,35 @@ class ModerationCog(commands.Cog):
         evidence: str = None
     ):
 
+        await interaction.response.defer(
+            ephemeral=True
+        )
+
+        if not await self.staff_server_only(
+            interaction
+        ):
+
+            return await interaction.followup.send(
+                "❌ Staff server only.",
+                ephemeral=True
+            )
+
+        main_guild = await self.get_main_guild()
+
+        target = main_guild.get_member(
+            target.id
+        )
+
+        if not target:
+
+            return await interaction.followup.send(
+                "❌ User not found.",
+                ephemeral=True
+            )
+
         case_id = await self.create_case(
             interaction,
-            "softban",
+            "kick",
             target,
             reason,
             evidence
@@ -621,157 +702,29 @@ class ModerationCog(commands.Cog):
 
         await self.send_dm(
             target,
-            interaction.guild,
-            "Softban",
+            main_guild,
+            "Kick",
             reason,
             case_id,
             interaction.user,
             evidence
         )
 
-        await interaction.guild.ban(
-            target,
-            reason=reason,
-            delete_message_days=1
-        )
-
-        await interaction.guild.unban(
-            target
+        await target.kick(
+            reason=reason
         )
 
         await self.log_action(
             interaction,
-            "softban",
+            "kick",
             target,
             reason,
             case_id,
             evidence
         )
 
-        await interaction.response.send_message(
-            f"✅ {target} softbanned successfully."
-        )
-
-    # =========================================================
-    # PURGE
-    # =========================================================
-
-    @app_commands.command(
-        name="purge",
-        description="Delete messages."
-    )
-
-    @staff_or_developer(
-        manage_messages=True
-    )
-
-    async def purge(
-        self,
-        interaction: discord.Interaction,
-        amount: int
-    ):
-
-        deleted = await interaction.channel.purge(
-            limit=amount
-        )
-
-        await interaction.response.send_message(
-            f"✅ Deleted {len(deleted)} messages.",
-            ephemeral=True
-        )
-
-    # =========================================================
-    # LOCK
-    # =========================================================
-
-    @app_commands.command(
-        name="lock",
-        description="Lock the channel."
-    )
-
-    @staff_or_developer(
-        manage_channels=True
-    )
-
-    async def lock(
-        self,
-        interaction: discord.Interaction
-    ):
-
-        overwrite = interaction.channel.overwrites_for(
-            interaction.guild.default_role
-        )
-
-        overwrite.send_messages = False
-
-        await interaction.channel.set_permissions(
-            interaction.guild.default_role,
-            overwrite=overwrite
-        )
-
-        await interaction.response.send_message(
-            "🔒 Channel locked."
-        )
-
-    # =========================================================
-    # UNLOCK
-    # =========================================================
-
-    @app_commands.command(
-        name="unlock",
-        description="Unlock the channel."
-    )
-
-    @staff_or_developer(
-        manage_channels=True
-    )
-
-    async def unlock(
-        self,
-        interaction: discord.Interaction
-    ):
-
-        overwrite = interaction.channel.overwrites_for(
-            interaction.guild.default_role
-        )
-
-        overwrite.send_messages = True
-
-        await interaction.channel.set_permissions(
-            interaction.guild.default_role,
-            overwrite=overwrite
-        )
-
-        await interaction.response.send_message(
-            "🔓 Channel unlocked."
-        )
-
-    # =========================================================
-    # SLOWMODE
-    # =========================================================
-
-    @app_commands.command(
-        name="slowmode",
-        description="Set slowmode."
-    )
-
-    @staff_or_developer(
-        manage_channels=True
-    )
-
-    async def slowmode(
-        self,
-        interaction: discord.Interaction,
-        seconds: int
-    ):
-
-        await interaction.channel.edit(
-            slowmode_delay=seconds
-        )
-
-        await interaction.response.send_message(
-            f"🐢 Slowmode set to "
-            f"{seconds} seconds."
+        await interaction.followup.send(
+            f"✅ {target} kicked successfully."
         )
 
     # =========================================================
