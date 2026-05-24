@@ -21,17 +21,39 @@ from cogs.modmail import (
 # Base Directory
 # =========================================================
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(
+    os.path.abspath(__file__)
+)
 
 sys.path.insert(0, BASE_DIR)
 
 load_dotenv()
 
 # =========================================================
-# MAIN GUILD
+# Guild Configuration
 # =========================================================
 
-GUILD_ID = 1495452158747742449
+MAIN_GUILD_ID = int(
+    os.getenv(
+        "MAIN_GUILD_ID",
+        "0"
+    )
+)
+
+STAFF_GUILD_ID = int(
+    os.getenv(
+        "STAFF_GUILD_ID",
+        "0"
+    )
+)
+
+MAIN_GUILD = discord.Object(
+    id=MAIN_GUILD_ID
+)
+
+STAFF_GUILD = discord.Object(
+    id=STAFF_GUILD_ID
+)
 
 # =========================================================
 # Bot Class Definition
@@ -49,7 +71,10 @@ class BoltBot(commands.Bot):
         # Load Cogs
         # =====================================================
 
-        cogs_dir = os.path.join(BASE_DIR, "cogs")
+        cogs_dir = os.path.join(
+            BASE_DIR,
+            "cogs"
+        )
 
         if os.path.exists(cogs_dir):
 
@@ -77,26 +102,60 @@ class BoltBot(commands.Bot):
 
                         print(
                             f"[Extension Fail] "
-                            f"Error loading cogs.{cog_name}: {e}"
+                            f"Error loading "
+                            f"cogs.{cog_name}: {e}"
                         )
 
         # =====================================================
-        # Instant Guild Sync
+        # Staff Guild Sync
         # =====================================================
 
-        guild = discord.Object(id=GUILD_ID)
+        if STAFF_GUILD_ID != 0:
 
-        self.tree.copy_global_to(
-            guild=guild
-        )
+            self.tree.copy_global_to(
+                guild=STAFF_GUILD
+            )
 
-        synced = await self.tree.sync(
-            guild=guild
-        )
+            staff_synced = await self.tree.sync(
+                guild=STAFF_GUILD
+            )
+
+            print(
+                f"✅ Synced "
+                f"{len(staff_synced)} "
+                f"staff guild commands."
+            )
+
+        # =====================================================
+        # Main Guild Sync
+        # =====================================================
+
+        if MAIN_GUILD_ID != 0:
+
+            self.tree.copy_global_to(
+                guild=MAIN_GUILD
+            )
+
+            main_synced = await self.tree.sync(
+                guild=MAIN_GUILD
+            )
+
+            print(
+                f"✅ Synced "
+                f"{len(main_synced)} "
+                f"main guild commands."
+            )
+
+        # =====================================================
+        # Global Sync
+        # =====================================================
+
+        global_synced = await self.tree.sync()
 
         print(
             f"✅ Synced "
-            f"{len(synced)} guild commands instantly."
+            f"{len(global_synced)} "
+            f"global commands."
         )
 
 # =========================================================
