@@ -1,87 +1,127 @@
-import os
 import discord
 from discord import app_commands
 from discord.ext import commands
 
+
+# ---------------------------------------------------------------------------
+# Dropdown select menu for command categories
+# ---------------------------------------------------------------------------
+
 class HelpDropdown(discord.ui.Select):
     def __init__(self):
         options = [
-            discord.SelectOption(label="Moderation System", description="View all administrative enforcement commands.", emoji="⚠️"),
-            discord.SelectOption(label="Support & Modmail", description="View ticketing and communication matrix commands.", emoji="✉️"),
-            discord.SelectOption(label="Staff & Quotas", description="View workforce parameters and shift session commands.", emoji="💼"),
-            discord.SelectOption(label="System & Utility", description="View core framework deployment and notice commands.", emoji="⚙️")
+            discord.SelectOption(
+                label="Moderation System",
+                description="View all moderation and enforcement commands.",
+                emoji="⚠️",
+            ),
+            discord.SelectOption(
+                label="Support & Modmail",
+                description="View ticketing and support commands.",
+                emoji="✉️",
+            ),
+            discord.SelectOption(
+                label="Staff & Quotas",
+                description="View staff management and shift commands.",
+                emoji="💼",
+            ),
+            discord.SelectOption(
+                label="System & Utility",
+                description="View core setup and utility commands.",
+                emoji="⚙️",
+            ),
         ]
-        super().__init__(placeholder="Choose an operational sector to view commands...", options=options, custom_id="bolt_help_dropdown_persistent")
+        super().__init__(
+            placeholder="Select a category to view its commands...",
+            options=options,
+            custom_id="bolt_help_dropdown_persistent",
+        )
 
     async def callback(self, interaction: discord.Interaction):
         selection = self.values[0]
         embed = discord.Embed(color=discord.Color.teal())
 
         if selection == "Moderation System":
-            embed.title = "⚠️ Moderation Infrastructure Manual"
+            embed.title = "⚠️ Moderation Commands"
             embed.description = (
-                "`/warn` - Issue a formal warning matrix entry onto a target user.\n"
-                "`/adwarn` - Issue a specialized warning dealing with promotion protocol violations.\n"
-                "`/history` - Query log tracking database for historic records regarding specific targets."
+                "`/warn <user> <reason> [evidence]` — Issue a formal warning to a user.\n"
+                "`/adwarn <user> <reason> [evidence]` — Issue an advertising policy warning.\n"
+                "`/history <user>` — View a user's moderation history."
             )
+
         elif selection == "Support & Modmail":
-            embed.title = "✉️ Support Interface Framework"
+            embed.title = "✉️ Support & Modmail Commands"
             embed.description = (
-                "`/staffstats` - Retrieve operational performance tracking vectors and resolution metrics.\n"
-                "*Note: Support sessions are dynamically handled via direct message transmission routing layers.*"
+                "`/staffstats` — View staff ticket resolution statistics.\n"
+                "*Support sessions are handled automatically via DMs.*"
             )
+
         elif selection == "Staff & Quotas":
-            embed.title = "💼 Workforce Management Console"
+            embed.title = "💼 Staff & Quota Commands"
             embed.description = (
-                "`/setdepartment` - Assign a specific operational department framework onto a staff member.\n"
-                "`/removedepartment` - Cleanly remove a target member from specialized department assignments.\n"
-                "`/addrank` - Create a system profile reference log for a new structural staff rank.\n"
-                "`/addduty` - Link explicit requirement framework updates onto an existing rank configuration.\n"
-                "`/poststaffdropdown` - Deploy the structured visual dropdown matrix interface overview.\n"
-                "`/deployquotamatrix` - Deploy the interactive button engine terminal dashboard for shifts."
+                "`/setdepartment <member> <department>` — Assign a staff member to a department.\n"
+                "`/removedepartment <member>` — Remove a member from their department.\n"
+                "`/addrank <name> <emoji> <description>` — Create a new staff rank profile.\n"
+                "`/addduty <rank> <duty>` — Add a duty requirement to an existing rank.\n"
+                "`/poststaffdropdown` — Post the staff ranks overview dropdown.\n"
+                "`/deployquotamatrix` — Deploy the shift and quota tracking dashboard."
             )
+
         elif selection == "System & Utility":
-            embed.title = "⚙️ Core Utility & Progression Frameworks"
+            embed.title = "⚙️ System & Utility Commands"
             embed.description = (
-                "`/rank` - Evaluate localized structural leveling and progression values metrics.\n"
-                "`/sticky` - Affix dynamic notice text block down bottom stream boundary layers.\n"
-                "`/unsticky` - Purge notice binding metrics completely from local view matrix.\n"
-                "`/setwelcome` - Configure public welcome greetings targeted at a specific text channel.\n"
-                "`/setleave` - Configure public departure logs targeted at a specific text channel.\n"
-                "`/deployappform` - Stream the recruitment initiation terminal panel into workspaces.\n"
-                "`/hrlogs` - Retrieve audit logging metrics synced across application validation tasks.\n"
-                "`/sethrchannel` - Configure the primary HR operations target log terminal channel."
+                "`/rank [member]` — Check a member's level and XP.\n"
+                "`/sticky <message>` — Pin a message to the bottom of the channel.\n"
+                "`/unsticky` — Remove the sticky message from the channel.\n"
+                "`/setwelcome <channel> <message>` — Set the welcome message.\n"
+                "`/setleave <channel> <message>` — Set the leave message.\n"
+                "`/deployappform <job>` — Deploy an application form to the public server.\n"
+                "`/hrlogs [reviewer]` — View HR application decision logs.\n"
+                "`/sethrchannel` — Set the current channel as the HR log channel."
             )
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
 
 class HelpDropdownView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
         self.add_item(HelpDropdown())
 
+
+# ---------------------------------------------------------------------------
+# Cog
+# ---------------------------------------------------------------------------
+
 class HelpCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="help", description="Deploy the primary Bolt interface manual and core operational command directory.")
+    @app_commands.command(
+        name="helpme",
+        description="Open the interactive Bolt command directory.",
+    )
     async def help_command(self, interaction: discord.Interaction):
         embed = discord.Embed(
-            title="⚡ Bolt All-In-One Mainframe Directory",
+            title="⚡ Bolt — Command Directory",
             description=(
-                "Welcome to the central operations command center for **Bolt**.\n\n"
-                "Please utilize the interactive selection matrix menu below to filter through "
-                "available command protocols, automation systems, and staff administration panels."
+                "Welcome to **Bolt**, your all-in-one multi-server management bot.\n\n"
+                "Use the dropdown menu below to browse commands by category."
             ),
-            color=discord.Color.gold()
+            color=discord.Color.gold(),
         )
-        embed.set_thumbnail(url=self.bot.user.display_avatar.url if self.bot.user else None)
-        embed.set_footer(text=f"System Core Framework — Authorized Operational Access Only")
-        
-        await interaction.response.send_message(embed=embed, view=HelpDropdownView(), ephemeral=True)
+        embed.set_thumbnail(
+            url=self.bot.user.display_avatar.url if self.bot.user else None
+        )
+        embed.set_footer(text="Bolt Multi-Server Bot — Authorized Access Only")
+
+        await interaction.response.send_message(
+            embed=embed, view=HelpDropdownView(), ephemeral=True
+        )
+
 
 async def setup(bot):
-    # Dynamically remove default help command to prevent duplication conflicts
+    # Disable the default prefix help command to avoid conflicts
     if bot.help_command:
         bot.help_command = None
     await bot.add_cog(HelpCog(bot))
