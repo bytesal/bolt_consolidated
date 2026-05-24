@@ -21,6 +21,7 @@ from cogs.modmail import (
 # =========================================================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 sys.path.insert(0, BASE_DIR)
 
 load_dotenv()
@@ -143,6 +144,65 @@ print(
     f"[Developers] Loaded "
     f"{len(bot.DEVELOPER_IDS)} developer IDs."
 )
+
+# =========================================================
+# Global Blacklist Check
+# =========================================================
+
+@bot.check
+async def global_blacklist_check(ctx):
+
+    # ============================================
+    # Developers bypass blacklist
+    # ============================================
+
+    if ctx.author.id in bot.DEVELOPER_IDS:
+        return True
+
+    db_cog = bot.get_cog("DatabaseCog")
+
+    if not db_cog:
+        return True
+
+    # ============================================
+    # User Blacklist
+    # ============================================
+
+    user_blacklist = await db_cog.blacklist.find_one({
+
+        "_id": str(ctx.author.id),
+        "type": "user"
+
+    })
+
+    if user_blacklist:
+        return False
+
+    # ============================================
+    # Guild Blacklist
+    # ============================================
+
+    if ctx.guild:
+
+        guild_blacklist = await db_cog.blacklist.find_one({
+
+            "_id": str(ctx.guild.id),
+            "type": "guild"
+
+        })
+
+        if guild_blacklist:
+
+            try:
+
+                await ctx.guild.leave()
+
+            except Exception:
+                pass
+
+            return False
+
+    return True
 
 # =========================================================
 # Ready Event
