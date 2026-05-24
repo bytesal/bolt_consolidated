@@ -1,6 +1,7 @@
+import os
 import discord
-from discord.ext import commands
 from discord import app_commands
+from discord.ext import commands
 
 class CoreCog(commands.Cog):
     def __init__(self, bot):
@@ -9,39 +10,58 @@ class CoreCog(commands.Cog):
     def is_dev(self, user_id: int) -> bool:
         return user_id in self.bot.DEVELOPER_IDS
 
-    def clean_permission_check(self, ctx, perm: str = None) -> bool:
-        if self.is_dev(ctx.author.id):
+    async def clean_permission_check(self, interaction: discord.Interaction, perm: str = None) -> bool:
+        if self.is_dev(interaction.user.id):
             return True
-        if perm and hasattr(ctx.author.guild_permissions, perm):
-            return getattr(ctx.author.guild_permissions, perm)
-        return ctx.author.guild_permissions.administrator
+        if perm and hasattr(interaction.user.guild_permissions, perm):
+            return getattr(interaction.user.guild_permissions, perm)
+        return interaction.user.guild_permissions.administrator
 
-    @commands.command(name="linkserver")
-    async def link_server_command(self, ctx, public_guild_id: int):
-        if not self.clean_permission_check(ctx):
-            return await ctx.send("❌ Access Denied: Administrator permission or Developer identity verification failed.")
+    @app_commands.command(name="linkserver", description="Interconnect staff server framework with a target public server.")
+    @app_commands.describe(public_guild_id="The explicit Snowflake ID designation of the target public guild configuration.")
+    async def link_server_command(self, interaction: discord.Interaction, public_guild_id: str):
+        if not await self.clean_permission_check(interaction):
+            return await interaction.response.send_message("❌ Access Denied: Administrator permission or Developer identity verification failed.", ephemeral=True)
+        
+        try:
+            target_id = int(public_guild_id)
+        except ValueError:
+            return await interaction.response.send_message("❌ Error: Provided public server ID must be a valid numerical sequence.", ephemeral=True)
+
         db_cog = self.bot.get_cog("DatabaseCog")
-        await db_cog.link_servers(ctx.guild.id, public_guild_id)
+        if not db_cog:
+            return await interaction.response.send_message("❌ Core DB Connection Unavailable.", ephemeral=True)
+
+        await db_cog.link_servers(interaction.guild.id, target_id)
         
         embed = discord.Embed(
             title="Server Inter-Link Implemented",
-            description=f"This channel cluster has been defined as the **Staff Server**.\nLinked Public Server Target: `{public_guild_id}`",
+            description=f"This channel cluster has been defined as the **Staff Server**.\nLinked Public Server Target: `{target_id}`",
             color=discord.Color.green()
         )
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
 
-    @commands.command(name="setprefix")
-    async def set_prefix_command(self, ctx, prefix: str):
-        if not self.clean_permission_check(ctx):
-            return await ctx.send("❌ Access Denied: Missing administrative permissions.")
+    @app_commands.command(name="setprefix", description="Alter dynamic routing parameter configurations for standard prefix validation.")
+    @app_commands.describe(prefix="The new character symbol sequence string designation.")
+    async def set_prefix_command(self, interaction: discord.Interaction, prefix: str):
+        if not await self.clean_permission_check(interaction):
+            return await interaction.response.send_message("❌ Access Denied: Missing administrative permissions.", ephemeral=True)
+            
         db_cog = self.bot.get_cog("DatabaseCog")
-        await db_cog.set_guild_prefix(ctx.guild.id, prefix)
-        await ctx.send(f"✅ Executed: Prefix updated to `{prefix}` for this guild.")
+        if not db_cog:
+            return await interaction.response.send_message("❌ Core DB Connection Unavailable.", ephemeral=True)
 
-    @commands.command(name="botstatus")
-    async def bot_status_command(self, ctx, status_type: str, *, activity_text: str):
-        if not self.is_dev(ctx.author.id):
-            return await ctx.send("❌ Core Security Error: Command limited to Global System Developers.")
+        await db_cog.set_guild_prefix(interaction.guild.id, prefix)
+        await interaction.response.send_message(f"✅ Executed: Prefix updated to `{prefix}` for this guild.")
+
+    @app_commands.command(name="botstatus", description="Force universal system presence override states across global processing matrices.")
+    @app_commands.describe(
+        status_type="The online visibility metrics type parameter (online, idle, dnd, invisible).",
+        activity_text="The customized text visual payload string to display inside presence feeds."
+    )
+    async def bot_status_command(self, interaction: discord.Interaction, status_type: str, activity_text: str):
+        if not self.is_dev(interaction.user.id):
+            return await interaction.response.send_message("❌ Core Security Error: Command limited to Global System Developers.", ephemeral=True)
         
         status_map = {
             "online": discord.Status.online,
@@ -52,35 +72,27 @@ class CoreCog(commands.Cog):
         status = status_map.get(status_type.lower(), discord.Status.online)
         activity = discord.Game(name=activity_text)
         await self.bot.change_presence(status=status, activity=activity)
-        await ctx.send("✅ System Presence modifications pushed to API successfully.")
+        await interaction.response.send_message("✅ System Presence modifications pushed to API successfully.")
 
-    @commands.command(name="setbotname")
-    async def set_bot_name_command(self, ctx, *, new_name: str):
-        if not self.is_dev(ctx.author.id):
-            return await ctx.send("❌ Core Security Error: Command limited to Global System Developers.")
+    @app_commands.command(name="setbotname", description="Alter global core identity naming structures assigned onto the application client profile.")
+    @app_commands.describe(new_name="The complete new username identity designation string.")
+    async def set_bot_name_command(self, interaction: discord.Interaction, new_name: str):
+        if not self.is_dev(interaction.user.id):
+            return await interaction.response.send_message("❌ Core Security Error: Command limited to Global System Developers.", ephemeral=True)
         try:
             await self.bot.user.edit(username=new_name)
-            await ctx.send(f"✅ System application identity renamed to: **{new_name}**")
+            await interaction.response.send_message(f"✅ System application identity renamed to: **{new_name}**")
         except Exception as e:
-            await ctx.send(f"❌ API Identity Assignment Refused: {e}")
+            await interaction.response.send_message(f"❌ API Identity Assignment Refused: {e}", ephemeral=True)
 
-    @commands.command(name="sync")
-    async def sync_slash_commands(self, ctx, scope: str = "guild"):
-        if not self.clean_permission_check(ctx):
-            return await ctx.send("❌ Access Denied.")
-        if scope == "global":
-            synced = await self.bot.tree.sync()
-            await ctx.send(f"✅ Globally synced `{len(synced)}` application slash commands to Discord registry.")
-        else:
-            self.bot.tree.copy_global_to(guild=ctx.guild)
-            synced = await self.bot.tree.sync(guild=ctx.guild)
-            await ctx.send(f"✅ Local sync operations resolved. `{len(synced)}` context commands configured inside this guild.")
-
-    @commands.command(name="help")
-    async def comprehensive_help(self, ctx):
+    @app_commands.command(name="help", description="Retrieve the structured operational assistance catalog for localized workspace contexts.")
+    async def comprehensive_help(self, interaction: discord.Interaction):
         db_cog = self.bot.get_cog("DatabaseCog")
-        is_staff = await db_cog.get_server_link(ctx.guild.id)
-        is_public = await db_cog.get_link_by_public(ctx.guild.id)
+        if not db_cog:
+            return await interaction.response.send_message("❌ Core DB Connection Unavailable.", ephemeral=True)
+
+        is_staff = await db_cog.get_server_link(interaction.guild.id)
+        is_public = await db_cog.get_link_by_public(interaction.guild.id)
 
         embed = discord.Embed(
             title="⚡ Comprehensive System Operations Core",
@@ -88,20 +100,21 @@ class CoreCog(commands.Cog):
             color=discord.Color.blue()
         )
 
-        if is_staff or self.is_dev(ctx.author.id):
+        if is_staff or self.is_dev(interaction.user.id):
             embed.add_field(
                 name="🛡️ Staff Server Executive Commands",
                 value=(
-                    "`!linkserver <Public ID>` - Interconnect server frames\n"
-                    "`!setprefix <Symbol>` - Alter dynamic routing parameters\n"
-                    "`!setwelcome <Channel ID> <Message>` - Stage public greetings\n"
-                    "`!setleave <Channel ID> <Message>` - Stage departure alerts\n"
-                    "`!sethrchannel` - Declare active application routing context\n"
-                    "`!hrlogs [Staff]` - Interrogate system log databases\n"
-                    "`!addrank <Name> <Emoji> <Description>` - Generate duty interfaces\n"
-                    "`!addduty <Rank> <Responsibility>` - Bind specific requirements\n"
-                    "`!removedepartment <Staff ID>` - Purge individual from specialized department allocations\n"
-                    "`!shift` / `!quota` - Access workload matrices manually"
+                    "`/linkserver <Public ID>` - Interconnect server frames\n"
+                    "`/setprefix <Symbol>` - Alter dynamic routing parameters\n"
+                    "`/setwelcome <Channel ID> <Message>` - Stage public greetings\n"
+                    "`/setleave <Channel ID> <Message>` - Stage departure alerts\n"
+                    "`/sethrchannel` - Declare active application routing context\n"
+                    "`/deployappform <Job>` - Deploy recruitment interface panels\n"
+                    "`/hrlogs [Staff]` - Interrogate system log databases\n"
+                    "`/addrank <Name> <Emoji> <Description>` - Generate duty interfaces\n"
+                    "`/addduty <Rank> <Responsibility>` - Bind specific requirements\n"
+                    "`/removedepartment <Staff ID>` - Purge individual from specialized allocations\n"
+                    "`/shift` / `/quota` - Access workload matrices manually"
                 ),
                 inline=False
             )
@@ -110,23 +123,23 @@ class CoreCog(commands.Cog):
             embed.add_field(
                 name="🌍 Main Public Server Commands",
                 value=(
-                    "`!rank` - Evaluate localized structural leveling values\n"
-                    "`!apply` - Trigger standard application request process\n"
+                    "`/rank` - Evaluate localized structural leveling values\n"
+                    "`/apply` - Trigger standard application request process\n"
                     "`/warn` / `/adwarn` - Trigger tracking systems (For allocated mods inside tracking context)\n"
                     "`/sticky` - Fix visual elements directly to local terminal streams"
                 ),
                 inline=False
             )
 
-        if self.is_dev(ctx.author.id):
+        if self.is_dev(interaction.user.id):
             embed.add_field(
                 name="🔧 Global Infrastructure Overrides (Dev Only)",
-                value="`!botstatus <Type> <Text>` - Force presence states\n`!setbotname <Name>` - Change API application identity",
+                value="`/botstatus <Type> <Text>` - Force presence states\n`/setbotname <Name>` - Change API application identity",
                 inline=False
             )
 
-        embed.set_footer(text="Bolt Multi-Server Platform Protocol v2.4 • Zero Shortcuts")
-        await ctx.send(embed=embed)
+        embed.set_footer(text="Bolt Multi-Server Platform Protocol v2.5 • Zero Shortcuts")
+        await interaction.response.send_message(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(CoreCog(bot))
