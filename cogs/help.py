@@ -306,9 +306,9 @@ class HelpDropdown(discord.ui.Select):
 
                 "`!automod mentions true/false` → Enable or disable anti-mention spam.",
 
-                "`!automod allowads` → Allow advertisements in current channel.",
+                "`!allowads` → Allow advertisements in current channel.",
 
-                "`!automod removeads` → Remove advertisements from current channel."
+                "`!removeads` → Remove advertisements from current channel."
             ]
 
             embed.add_field(
@@ -348,6 +348,46 @@ class HelpDropdown(discord.ui.Select):
 
         elif category == "Developer":
 
+            # ================================================
+            # Non Developers
+            # ================================================
+
+            if interaction.user.id not in interaction.client.DEVELOPER_IDS:
+
+                embed.title = "🔒 Developer Category"
+
+                embed.description = (
+                    "You are not allowed to access developer commands."
+                )
+
+                embed.color = discord.Color.red()
+
+                embed.add_field(
+                    name="Developer",
+                    value=(
+                        "👤 <@1503347550122410065>\n"
+                        "`1503347550122410065`"
+                    ),
+                    inline=False
+                )
+
+                embed.set_thumbnail(
+                    url="https://cdn.discordapp.com/embed/avatars/0.png"
+                )
+
+                embed.set_footer(
+                    text="Access Restricted"
+                )
+
+                return await interaction.response.edit_message(
+                    embed=embed,
+                    view=self.view
+                )
+
+            # ================================================
+            # Real Developer View
+            # ================================================
+
             embed.title = "🧑‍💻 Developer Commands"
 
             embed.description = (
@@ -356,14 +396,16 @@ class HelpDropdown(discord.ui.Select):
 
             commands_list = [
 
+                "`/sync` → Sync slash commands.",
+                "`/reload` → Reload a cog.",
+                "`/load` → Load a cog.",
+                "`/unload` → Unload a cog.",
+                "`/shutdown` → Shutdown the bot.",
+                "`/eval` → Execute Python code.",
                 "`/devpanel` → Open developer panel.",
-
                 "`/blacklistuser` → Blacklist a user globally.",
-
                 "`/unblacklistuser` → Remove user blacklist.",
-
                 "`/blacklistguild` → Blacklist a guild globally.",
-
                 "`/unblacklistguild` → Remove guild blacklist."
             ]
 
