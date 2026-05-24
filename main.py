@@ -11,7 +11,10 @@ from dotenv import load_dotenv
 # =========================================================
 
 from cogs.help import HelpView
-from cogs.modmail import TicketCategoryView
+from cogs.modmail import (
+    TicketCategoryView,
+    OpenTicketButton
+)
 
 # =========================================================
 # Base Directory
@@ -27,6 +30,7 @@ load_dotenv()
 # =========================================================
 
 async def handle_ping(request):
+
     return web.Response(
         text="Bolt Multi-Server Engine is alive and responsive."
     )
@@ -53,7 +57,8 @@ async def start_web_server():
     await site.start()
 
     print(
-        f"[Web Engine] Port binding active on 0.0.0.0:{port}"
+        f"[Web Engine] "
+        f"Port binding active on 0.0.0.0:{port}"
     )
 
 # =========================================================
@@ -62,15 +67,24 @@ async def start_web_server():
 
 async def get_prefix(bot, message):
 
-    # Developers always bypass guild prefixes
+    # =====================================================
+    # Developer Prefix Override
+    # =====================================================
+
     if message.author.id in bot.DEVELOPER_IDS:
         return "!"
 
-    # DMs always use default prefix
+    # =====================================================
+    # DM Prefix
+    # =====================================================
+
     if not message.guild:
         return "!"
 
-    # Search for database cog
+    # =====================================================
+    # Database Prefix Lookup
+    # =====================================================
+
     for cog_name in [
         "DatabaseCog",
         "DatabaseHandler",
@@ -114,8 +128,21 @@ bot = commands.Bot(
 # =========================================================
 
 bot.DEVELOPER_IDS = [
-    1503347550122410065
+
+    int(dev_id.strip())
+
+    for dev_id in os.getenv(
+        "DEVELOPER_IDS",
+        ""
+    ).split(",")
+
+    if dev_id.strip().isdigit()
 ]
+
+print(
+    f"[Developers] Loaded "
+    f"{len(bot.DEVELOPER_IDS)} developer IDs."
+)
 
 # =========================================================
 # Ready Event
@@ -125,13 +152,17 @@ bot.DEVELOPER_IDS = [
 async def on_ready():
 
     print("==================================================")
+
     print(
         f"[Initialization] Logged in as: "
         f"{bot.user.name} ({bot.user.id})"
     )
+
     print(
-        "[Initialization] System architecture loaded cleanly."
+        "[Initialization] "
+        "System architecture loaded cleanly."
     )
+
     print("==================================================")
 
     # =====================================================
@@ -145,7 +176,9 @@ async def on_ready():
     )
 
     await bot.change_presence(
+
         status=discord.Status.online,
+
         activity=discord.Activity(
             type=discord.ActivityType.watching,
             name=activity_text
@@ -164,14 +197,16 @@ async def on_ready():
     try:
 
         print(
-            "[Sync] Initializing application commands sync..."
+            "[Sync] Initializing "
+            "application commands sync..."
         )
 
         synced = await bot.tree.sync()
 
         print(
             f"[Sync Success] "
-            f"Synchronized {len(synced)} slash commands globally."
+            f"Synchronized "
+            f"{len(synced)} slash commands globally."
         )
 
     except discord.HTTPException as http_err:
@@ -199,6 +234,10 @@ async def on_ready():
 
         bot.add_view(
             TicketCategoryView(bot)
+        )
+
+        bot.add_view(
+            OpenTicketButton()
         )
 
         print(
@@ -248,9 +287,13 @@ async def on_ready():
             break
 
     print("==================================================")
-    print("[System Ready] Bolt Engine is fully operational.")
-    print("==================================================")
 
+    print(
+        "[System Ready] "
+        "Bolt Engine is fully operational."
+    )
+
+    print("==================================================")
 
 # =========================================================
 # Global Error Handler
@@ -316,7 +359,8 @@ async def main():
 
             print(
                 f"[Critical Error] "
-                f"Cogs directory not found at: {cogs_dir}"
+                f"Cogs directory not found at: "
+                f"{cogs_dir}"
             )
 
         # =================================================
@@ -353,4 +397,5 @@ async def main():
 # =========================================================
 
 if __name__ == "__main__":
+
     asyncio.run(main())
