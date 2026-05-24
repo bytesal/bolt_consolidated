@@ -49,10 +49,7 @@ class BoltBot(commands.Bot):
         # Load Cogs
         # =====================================================
 
-        cogs_dir = os.path.join(
-            BASE_DIR,
-            "cogs"
-        )
+        cogs_dir = os.path.join(BASE_DIR, "cogs")
 
         if os.path.exists(cogs_dir):
 
@@ -76,17 +73,21 @@ class BoltBot(commands.Bot):
                             f"cogs.{cog_name}"
                         )
 
-                    except Exception:
+                    except Exception as e:
 
-                        import traceback
-                        traceback.print_exc()
+                        print(
+                            f"[Extension Fail] "
+                            f"Error loading cogs.{cog_name}: {e}"
+                        )
 
         # =====================================================
         # Instant Guild Sync
         # =====================================================
 
-        guild = discord.Object(
-            id=GUILD_ID
+        guild = discord.Object(id=GUILD_ID)
+
+        self.tree.copy_global_to(
+            guild=guild
         )
 
         synced = await self.tree.sync(
@@ -94,8 +95,8 @@ class BoltBot(commands.Bot):
         )
 
         print(
-            f"✅ Synced {len(synced)} "
-            f"guild commands instantly."
+            f"✅ Synced "
+            f"{len(synced)} guild commands instantly."
         )
 
 # =========================================================
@@ -135,23 +136,22 @@ def start_web_server():
     t.start()
 
     print(
-        "[Web Engine] Flask server "
-        "thread started."
+        "[Web Engine] "
+        "Flask server thread started."
     )
 
 # =========================================================
 # Dynamic Prefix Resolver
 # =========================================================
 
-async def get_prefix(
-    bot,
-    message
-):
+async def get_prefix(bot, message):
 
     if message.author.id in bot.DEVELOPER_IDS:
+
         return "!"
 
     if not message.guild:
+
         return "!"
 
     for cog_name in [
@@ -179,6 +179,7 @@ async def get_prefix(
             )
 
             if custom_prefix:
+
                 return custom_prefix
 
     return "!"
@@ -215,7 +216,6 @@ bot.DEVELOPER_IDS = [
 ]
 
 print(
-
     f"[Developers] Loaded "
     f"{len(bot.DEVELOPER_IDS)} "
     f"developer IDs."
@@ -229,6 +229,7 @@ print(
 async def global_blacklist_check(ctx):
 
     if ctx.author.id in bot.DEVELOPER_IDS:
+
         return True
 
     db_cog = bot.get_cog(
@@ -236,6 +237,7 @@ async def global_blacklist_check(ctx):
     )
 
     if not db_cog:
+
         return True
 
     user_blacklist = await db_cog.blacklist.find_one({
@@ -246,6 +248,7 @@ async def global_blacklist_check(ctx):
     })
 
     if user_blacklist:
+
         return False
 
     if ctx.guild:
@@ -264,6 +267,7 @@ async def global_blacklist_check(ctx):
                 await ctx.guild.leave()
 
             except Exception:
+
                 pass
 
             return False
@@ -280,14 +284,14 @@ async def on_ready():
     print("==================================================")
 
     print(
-        f"[Initialization] Logged in as: "
-        f"{bot.user.name} "
-        f"({bot.user.id})"
+        f"[Initialization] "
+        f"Logged in as: "
+        f"{bot.user.name} ({bot.user.id})"
     )
 
     print(
-        "[Initialization] System architecture "
-        "loaded cleanly."
+        "[Initialization] "
+        "System architecture loaded cleanly."
     )
 
     print("==================================================")
@@ -339,7 +343,8 @@ async def on_ready():
     except Exception as e:
 
         print(
-            f"[Views Fail] Failed restoring "
+            f"[Views Fail] "
+            f"Failed restoring "
             f"persistent views: {e}"
         )
 
@@ -372,15 +377,16 @@ async def on_ready():
                 await db_cog.restore_persistent_views()
 
                 print(
-                    "[Database] Persistent database "
-                    "views restored."
+                    "[Database] Persistent "
+                    "database views restored."
                 )
 
             except Exception as e:
 
                 print(
                     f"[Database Fail] "
-                    f"Persistent view restoration failed: {e}"
+                    f"Persistent view "
+                    f"restoration failed: {e}"
                 )
 
             break
@@ -388,8 +394,8 @@ async def on_ready():
     print("==================================================")
 
     print(
-        "[System Ready] Bolt Engine "
-        "is fully operational."
+        "[System Ready] "
+        "Bolt Engine is fully operational."
     )
 
     print("==================================================")
@@ -399,10 +405,7 @@ async def on_ready():
 # =========================================================
 
 @bot.event
-async def on_command_error(
-    ctx,
-    error
-):
+async def on_command_error(ctx, error):
 
     if isinstance(
         error,
@@ -420,7 +423,7 @@ async def on_command_error(
 async def main():
 
     # =====================================================
-    # Start Flask Web Server
+    # Start Flask Server
     # =====================================================
 
     start_web_server()
@@ -435,14 +438,11 @@ async def main():
         if not token:
 
             raise ValueError(
-                "CRITICAL ERROR: No token found."
+                "CRITICAL ERROR: "
+                "No token found."
             )
 
         await bot.start(token)
-
-# =========================================================
-# Launch
-# =========================================================
 
 if __name__ == "__main__":
 
