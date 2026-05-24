@@ -48,6 +48,15 @@ async def on_ready():
     print(f"[Initialization] System Architecture Loaded Cleanly.")
     print(f"==================================================")
     
+    # Setting up an advanced dynamic presence for the multi-server nature of the bot
+    guild_count = len(bot.guilds)
+    activity_text = f"over {guild_count} servers | Bolt Engine"
+    await bot.change_presence(
+        status=discord.Status.online,
+        activity=discord.Activity(type=discord.ActivityType.watching, name=activity_text)
+    )
+    print(f"[Presence] Dynamic activity successfully set to: Watching {activity_text}")
+    
     # Persistent View restoration across reboots
     db_cog = bot.get_cog("DatabaseCog")
     if db_cog:
