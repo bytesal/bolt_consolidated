@@ -22,7 +22,7 @@ async def start_web_server():
     print(f"[Web Engine] Port binding active on 0.0.0.0:{port}")
 
 async def get_prefix(bot, message):
-    # Hardcoded bypass for developers to ensure sync command always works
+    # Hardcoded bypass for developers to ensure dynamic prefix checks
     if message.author.id in bot.DEVELOPER_IDS:
         return "!"
         
@@ -64,6 +64,16 @@ async def on_ready():
     )
     print(f"[Presence] Dynamic activity successfully set to: Watching {activity_text}")
     
+    # Automatic global command synchronization on startup
+    try:
+        print("[Sync] Initializing automatic application commands sync...")
+        synced = await bot.tree.sync()
+        print(f"[Sync Success] Automatically synchronized {len(synced)} slash commands globally.")
+    except discord.HTTPException as http_err:
+        print(f"[Sync Fail] Discord API HTTP error during auto-sync: {http_err}")
+    except Exception as e:
+        print(f"[Sync Fail] Unexpected system error during auto-sync: {e}")
+
     # Persistent View restoration across reboots
     for cog_name in ["DatabaseCog", "DatabaseHandler", "Database"]:
         db_cog = bot.get_cog(cog_name)
