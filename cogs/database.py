@@ -25,7 +25,7 @@ class DatabaseCog(commands.Cog):
         self.client = AsyncIOMotorClient(mongo_uri)
         self.db = self.client["bolt_multi_server_db"]
 
-        # Collections
+        # Existing collections
         self.settings = self.db["global_settings"]
         self.server_links = self.db["server_links"]
         self.leveling = self.db["user_levels"]
@@ -43,7 +43,13 @@ class DatabaseCog(commands.Cog):
         self.staff_global_config = self.db["staff_global_config"]
         self.blacklist = self.db["global_blacklist"]
         self.staff_teams = self.db["staff_teams"]
-        self.ad_warns = self.db["ad_warns"]  # New collection for ad-warns
+        self.automod = self.db["automod"]
+
+        # Phase 4 new collections
+        self.ad_warns = self.db["ad_warns"]
+        self.ticket_messages = self.db["ticket_messages"]
+        self.audit_log = self.db["audit_log"]
+        self.reaction_roles = self.db["reaction_roles"]
 
     # ------------------------------------------------------------
     # Prefix Helpers
@@ -112,6 +118,35 @@ class DatabaseCog(commands.Cog):
             )
         except Exception as e:
             print(f"[Database Error] Failed to update server link: {e}")
+
+    # ------------------------------------------------------------
+    # Index Management (Phase 4)
+    # ------------------------------------------------------------
+    async def ensure_indexes(self):
+        """Create necessary indexes for performance."""
+        try:
+            # Moderation
+            await self.mod_cases.create_index("target_id")
+            await self.mod_cases.create_index("case_id")
+            await self.mod_users.create_index("_id")
+            # Ad-warns
+            await self.ad_warns.create_index("target_id")
+            await self.ad_warns.create_index("issuer_id")
+            # Staff quota
+            await self.staff_quota_profiles.create_index("department")
+            # Modmail
+            await self.modmail_tickets.create_index("user_id")
+            await self.modmail_tickets.create_index("status")
+            await self.ticket_messages.create_index("ticket_id")
+            # Audit log
+            await self.audit_log.create_index("guild_id")
+            await self.audit_log.create_index("timestamp")
+            # Reaction roles
+            await self.reaction_roles.create_index("message_id")
+            await self.reaction_roles.create_index("guild_id")
+            print("[Database] All indexes created/verified.")
+        except Exception as e:
+            print(f"[Database] Index creation error: {e}")
 
     # ------------------------------------------------------------
     # Persistent View Restoration
