@@ -75,41 +75,43 @@ class TicketControls(discord.ui.View):
 
     @discord.ui.button(label="Claim", style=discord.ButtonStyle.green, emoji="🛄", custom_id="claim_ticket_button")
     async def claim_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
         db_cog = self.bot.get_cog("DatabaseCog")
         if not db_cog:
-            return await interaction.response.send_message("❌ Database error.", ephemeral=True)
+            return await interaction.followup.send("❌ Database error.", ephemeral=True)
         ticket = await db_cog.modmail_tickets.find_one({"channel_id": str(interaction.channel.id), "status": "open"})
         if not ticket:
-            return await interaction.response.send_message("❌ Ticket not found.", ephemeral=True)
-        # Atomic update: only claim if not already claimed
+            return await interaction.followup.send("❌ Ticket not found.", ephemeral=True)
         result = await db_cog.modmail_tickets.update_one(
             {"_id": ticket["_id"], "claimed_by": None},
             {"$set": {"claimed_by": str(interaction.user.id), "claimed_at": datetime.utcnow()}}
         )
         if result.modified_count == 0:
-            return await interaction.response.send_message("❌ This ticket is already claimed by another staff member.", ephemeral=True)
+            return await interaction.followup.send("❌ This ticket is already claimed by another staff member.", ephemeral=True)
         embed = discord.Embed(description=f"🛄 Ticket claimed by {interaction.user.mention}", color=discord.Color.green())
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
         logger.info(f"Ticket {ticket['_id']} claimed by {interaction.user.id}")
 
     @discord.ui.button(label="Unclaim", style=discord.ButtonStyle.grey, emoji="🔄", custom_id="unclaim_ticket_button")
     async def unclaim_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
         db_cog = self.bot.get_cog("DatabaseCog")
         if not db_cog:
-            return await interaction.response.send_message("❌ Database error.", ephemeral=True)
+            return await interaction.followup.send("❌ Database error.", ephemeral=True)
         ticket = await db_cog.modmail_tickets.find_one({"channel_id": str(interaction.channel.id), "status": "open"})
         if not ticket:
-            return await interaction.response.send_message("❌ Ticket not found.", ephemeral=True)
+            return await interaction.followup.send("❌ Ticket not found.", ephemeral=True)
         await db_cog.modmail_tickets.update_one(
             {"_id": ticket["_id"]},
             {"$set": {"claimed_by": None, "claimed_at": None}}
         )
         embed = discord.Embed(description=f"🔄 Ticket unclaimed by {interaction.user.mention}", color=discord.Color.blue())
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
         logger.info(f"Ticket {ticket['_id']} unclaimed by {interaction.user.id}")
 
     @discord.ui.button(label="Close", style=discord.ButtonStyle.red, emoji="🔒", custom_id="close_ticket_button")
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
         cog = self.bot.get_cog("ModmailCog")
         if not cog:
             return
@@ -118,9 +120,8 @@ class TicketControls(discord.ui.View):
             return
         ticket = await db_cog.modmail_tickets.find_one({"channel_id": str(interaction.channel.id), "status": "open"})
         if not ticket:
-            return await interaction.response.send_message("❌ Ticket not found.", ephemeral=True)
+            return await interaction.followup.send("❌ Ticket not found.", ephemeral=True)
 
-        await interaction.response.defer()
         closed_at = datetime.utcnow()
         await db_cog.modmail_tickets.update_one(
             {"_id": ticket["_id"]},
@@ -130,13 +131,12 @@ class TicketControls(discord.ui.View):
         # Generate transcript
         messages = await db_cog.ticket_messages.find({"ticket_id": ticket["_id"]}).sort("timestamp", 1).to_list(None)
         transcript = await cog.generate_transcript(ticket, messages, closed_at)
-        config = await db_cog.settings.find_one({"_id": "modmail_config"})
+        config = await db_cog.settings.find_one({"_id": f"modmail_config_{interaction.guild.id}"})
         if config and config.get("transcript_channel_id"):
             transcript_channel = self.bot.get_channel(int(config["transcript_channel_id"]))
             if transcript_channel:
                 file = discord.File(transcript, filename=f"transcript_{ticket['_id']}.html")
                 await transcript_channel.send(f"📜 Ticket #{ticket['_id']} closed by {interaction.user.mention}", file=file)
-        # Clean up temp file
         try:
             os.remove(transcript)
         except:
@@ -197,20 +197,21 @@ class ModmailCog(commands.Cog):
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.cooldown(1, 30)
     async def setupmodmail(self, interaction: discord.Interaction, category: discord.CategoryChannel, transcript_channel: discord.TextChannel = None):
+        await interaction.response.defer(ephemeral=True)
         db_cog = self.get_database_cog()
         if not db_cog:
-            return await interaction.response.send_message("❌ Database system unavailable.", ephemeral=True)
+            return await interaction.followup.send("❌ Database system unavailable.", ephemeral=True)
         await db_cog.settings.update_one(
-            {"_id": "modmail_config"},
+            {"_id": f"modmail_config_{interaction.guild.id}"},
             {"$set": {
-                "staff_guild_id": str(interaction.guild.id),
+                "guild_id": str(interaction.guild.id),
                 "category_id": str(category.id),
                 "transcript_channel_id": str(transcript_channel.id) if transcript_channel else None
             }},
             upsert=True
         )
-        await interaction.response.send_message(
-            f"✅ Modmail configured.\n🛡️ Staff Server: `{interaction.guild.name}`\n📂 Category: {category.mention}\n📜 Transcripts: {transcript_channel.mention if transcript_channel else 'Not set'}"
+        await interaction.followup.send(
+            f"✅ Modmail configured.\n📂 Category: {category.mention}\n📜 Transcripts: {transcript_channel.mention if transcript_channel else 'Not set'}"
         )
         logger.info(f"Modmail configured by {interaction.user.id} in {interaction.guild.id}")
 
@@ -218,6 +219,7 @@ class ModmailCog(commands.Cog):
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.cooldown(1, 10)
     async def panel(self, interaction: discord.Interaction):
+        await interaction.response.defer()
         embed = discord.Embed(
             title="📩 Support & Assistance Center",
             description="Need help from the staff team?\n\nClick the button below to create a ticket.",
@@ -228,32 +230,41 @@ class ModmailCog(commands.Cog):
         if interaction.guild.icon:
             embed.set_thumbnail(url=interaction.guild.icon.url)
         embed.set_footer(text=f"{interaction.guild.name} Support System")
-        await interaction.response.send_message(embed=embed, view=OpenTicketButton())
+        await interaction.followup.send(embed=embed, view=OpenTicketButton())
 
     async def create_ticket(self, interaction: discord.Interaction, category_name: str):
         db_cog = self.get_database_cog()
         if not db_cog:
             return
-        config = await db_cog.settings.find_one({"_id": "modmail_config"})
+        config = await db_cog.settings.find_one({"_id": f"modmail_config_{interaction.guild.id}"})
         if not config:
-            return await interaction.response.send_message("❌ Modmail has not been configured.", ephemeral=True)
-        existing = await db_cog.modmail_tickets.find_one({"user_id": str(interaction.user.id), "status": "open"})
+            return await interaction.response.send_message("❌ Modmail has not been configured. Run `/setupmodmail` first.", ephemeral=True)
+
+        existing = await db_cog.modmail_tickets.find_one({"user_id": str(interaction.user.id), "status": "open", "guild_id": str(interaction.guild.id)})
         if existing:
-            return await interaction.response.send_message("❌ You already have an open ticket.", ephemeral=True)
-        guild = self.bot.get_guild(int(config["staff_guild_id"]))
-        if not guild:
-            return
+            return await interaction.response.send_message("❌ You already have an open ticket in this server.", ephemeral=True)
+
+        guild = interaction.guild
         category = guild.get_channel(int(config["category_id"]))
         if not category:
-            return
+            return await interaction.response.send_message("❌ Modmail category not found. Re-run `/setupmodmail`.", ephemeral=True)
+
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
             guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
         }
+        # Add staff role permissions if configured
+        staff_role_id = config.get("staff_role_id")
+        if staff_role_id:
+            staff_role = guild.get_role(int(staff_role_id))
+            if staff_role:
+                overwrites[staff_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
+
         channel_name = f"{category_name.lower()}-{interaction.user.name}"
         ticket_channel = await guild.create_text_channel(name=channel_name, category=category, overwrites=overwrites)
         ticket_doc = {
             "_id": str(ticket_channel.id),
+            "guild_id": str(interaction.guild.id),
             "user_id": str(interaction.user.id),
             "user_name": interaction.user.name,
             "channel_id": str(ticket_channel.id),
@@ -278,7 +289,7 @@ class ModmailCog(commands.Cog):
             await interaction.user.send("✅ Your support ticket has been created. A staff member will assist you shortly.")
         except Exception:
             pass
-        logger.info(f"Ticket {ticket_doc['_id']} created by user {interaction.user.id}")
+        logger.info(f"Ticket {ticket_doc['_id']} created by user {interaction.user.id} in guild {interaction.guild.id}")
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -290,10 +301,10 @@ class ModmailCog(commands.Cog):
 
         # User DM -> Staff channel
         if isinstance(message.channel, discord.DMChannel):
+            # Find open ticket in any guild
             ticket = await db_cog.modmail_tickets.find_one({"user_id": str(message.author.id), "status": "open"})
             if ticket:
-                config = await db_cog.settings.find_one({"_id": "modmail_config"})
-                guild = self.bot.get_guild(int(config["staff_guild_id"]))
+                guild = self.bot.get_guild(int(ticket["guild_id"]))
                 if not guild:
                     return
                 channel = guild.get_channel(int(ticket["channel_id"]))
@@ -321,12 +332,13 @@ class ModmailCog(commands.Cog):
                     pass
                 return
 
+            # Cooldown for new tickets
             now = datetime.utcnow().timestamp()
             if message.author.id in self.cooldowns and (now - self.cooldowns[message.author.id]) < TICKET_COOLDOWN:
                 return await message.author.send("⏳ Please wait before opening another ticket.")
             self.cooldowns[message.author.id] = now
-            embed = discord.Embed(title="📩 Support Center", description="Choose a category below.", color=discord.Color.gold())
-            return await message.author.send(embed=embed, view=TicketCategoryView(self.bot))
+            embed = discord.Embed(title="📩 Support Center", description="This bot supports multiple servers. Which server do you need help with?\n\nRun `/panel` in the server where you need support to create a ticket.", color=discord.Color.gold())
+            return await message.author.send(embed=embed)
 
         # Staff reply -> User (ANONYMIZED with claim lock)
         if message.guild:
@@ -336,14 +348,13 @@ class ModmailCog(commands.Cog):
             # Check claim lock
             claimed_by = ticket.get("claimed_by")
             if claimed_by and claimed_by != str(message.author.id):
-                # Notify the staff member that the ticket is claimed
                 try:
                     await message.delete()
                     await message.author.send(f"❌ This ticket is claimed by <@{claimed_by}>. Please unclaim it first or ask them to release it.")
                 except Exception:
                     pass
                 return
-            # If not claimed, auto‑claim for the replying staff (optional)
+            # Auto‑claim on reply
             if not claimed_by:
                 await db_cog.modmail_tickets.update_one(
                     {"_id": ticket["_id"]},
