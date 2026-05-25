@@ -105,7 +105,15 @@ class BoltBot(commands.Bot):
             except Exception as e:
                 print(f"[Database Fail] Persistent view restoration failed: {e}")
 
-        # 4. Sync slash commands
+        # 4. Ensure database indexes (new Phase 4)
+        if db_cog and hasattr(db_cog, "ensure_indexes"):
+            try:
+                await db_cog.ensure_indexes()
+                print("[Database] Indexes created/verified.")
+            except Exception as e:
+                print(f"[Database] Index creation failed: {e}")
+
+        # 5. Sync slash commands
         await self._sync_commands()
 
         print("[Hook] setup_hook completed.")
