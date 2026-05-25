@@ -4,6 +4,7 @@ import asyncio
 import signal
 import threading
 from flask import Flask
+from werkzeug.serving import make_server
 from discord.ext import commands
 import discord
 from dotenv import load_dotenv
@@ -32,7 +33,6 @@ STAFF_GUILD = discord.Object(id=STAFF_GUILD_ID) if STAFF_GUILD_ID else None
 
 flask_app = Flask("")
 flask_thread = None
-flask_shutdown_event = threading.Event()
 
 @flask_app.route("/")
 def home():
@@ -40,8 +40,6 @@ def home():
 
 def run_flask():
     port = int(os.getenv("PORT", 8080))
-    # Use a simple HTTP server that can be stopped via shutdown_event
-    from werkzeug.serving import make_server
     server = make_server("0.0.0.0", port, flask_app)
     server.serve_forever()
 
@@ -52,8 +50,6 @@ def start_flask():
     print("[Web Engine] Flask server thread started.")
 
 def stop_flask():
-    # Werkzeug server has no built‑in stop; we rely on daemon thread exit.
-    # The thread will exit when the main process ends.
     print("[Web Engine] Flask server stopping...")
 
 # ------------------------------------------------------------
@@ -100,7 +96,7 @@ class BoltBot(commands.Bot):
         # 2. Register static persistent views (must be done before sync)
         self._add_static_views()
 
-        # 3. Restore dynamic database‑backed views (idempotent)
+        # 3. Restore dynamic database‑backed views
         db_cog = self.get_cog("DatabaseCog")
         if db_cog and hasattr(db_cog, "restore_persistent_views"):
             try:
@@ -109,7 +105,7 @@ class BoltBot(commands.Bot):
             except Exception as e:
                 print(f"[Database Fail] Persistent view restoration failed: {e}")
 
-        # 4. Sync slash commands (guild copies first, then global)
+        # 4. Sync slash commands
         await self._sync_commands()
 
         print("[Hook] setup_hook completed.")
@@ -131,28 +127,22 @@ class BoltBot(commands.Bot):
         except Exception as e:
             print(f"[Views Fail] Modmail views: {e}")
 
-        # StaffQuotaView and RanksDropdownView are restored by DatabaseCog
-
     async def _sync_commands(self):
         """Sync commands to guilds and globally."""
-        # Staff guild sync
         if STAFF_GUILD_ID != 0 and STAFF_GUILD:
             self.tree.copy_global_to(guild=STAFF_GUILD)
             synced = await self.tree.sync(guild=STAFF_GUILD)
             print(f"✅ Synced {len(synced)} staff guild commands.")
 
-        # Main guild sync
         if MAIN_GUILD_ID != 0 and MAIN_GUILD:
             self.tree.copy_global_to(guild=MAIN_GUILD)
             synced = await self.tree.sync(guild=MAIN_GUILD)
             print(f"✅ Synced {len(synced)} main guild commands.")
 
-        # Global sync
         synced = await self.tree.sync()
         print(f"✅ Synced {len(synced)} global commands.")
 
     async def on_ready(self):
-        """Called when the WebSocket connection is established (may happen multiple times)."""
         if not self._ready_flag:
             self._ready_flag = True
             print("=" * 50)
@@ -160,7 +150,6 @@ class BoltBot(commands.Bot):
             print("[Initialization] System architecture loaded cleanly.")
             print("=" * 50)
 
-        # Update presence – safe to repeat
         guild_count = len(self.guilds)
         activity_text = f"over {guild_count} servers | Bolt Engine"
         await self.change_presence(
@@ -176,7 +165,6 @@ class BoltBot(commands.Bot):
             print("=" * 50)
 
     async def close(self):
-        """Gracefully shut down the bot and stop auxiliary threads."""
         print("[Shutdown] Closing bot connections...")
         stop_flask()
         await super().close()
@@ -189,7 +177,6 @@ class BoltBot(commands.Bot):
 intents = discord.Intents.all()
 bot = BoltBot(command_prefix=get_prefix, intents=intents, help_command=None)
 
-# Load developer IDs from env
 bot.DEVELOPER_IDS = [
     int(dev_id.strip())
     for dev_id in os.getenv("DEVELOPER_IDS", "").split(",")
