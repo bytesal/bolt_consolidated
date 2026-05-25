@@ -3,121 +3,37 @@ from discord.ext import commands
 from discord import app_commands
 
 
-# =========================================================
-# HELP DROPDOWN
-# =========================================================
-
 class HelpDropdown(discord.ui.Select):
-
     def __init__(self):
-
         options = [
-
-            discord.SelectOption(
-                label="Moderation",
-                emoji="🛡️",
-                description="Moderation and punishment commands."
-            ),
-
-            discord.SelectOption(
-                label="Modmail",
-                emoji="📩",
-                description="Support and ticket system commands."
-            ),
-
-            discord.SelectOption(
-                label="Reception",
-                emoji="🎉",
-                description="Welcome and reception system."
-            ),
-
-            discord.SelectOption(
-                label="Applications",
-                emoji="📄",
-                description="Applications and recruitment system."
-            ),
-
-            discord.SelectOption(
-                label="Leveling",
-                emoji="📈",
-                description="XP and leveling commands."
-            ),
-
-            discord.SelectOption(
-                label="Utility",
-                emoji="⚙️",
-                description="Utility and management commands."
-            ),
-
-            discord.SelectOption(
-                label="Staff",
-                emoji="👥",
-                description="Staff systems and quota commands."
-            ),
-
-            discord.SelectOption(
-                label="Staff Teams",
-                emoji="📂",
-                description="Dynamic staff department system."
-            ),
-
-            discord.SelectOption(
-                label="AutoMod",
-                emoji="🤖",
-                description="Automatic moderation system."
-            ),
-
-            discord.SelectOption(
-                label="Analytics",
-                emoji="📊",
-                description="Statistics and analytics commands."
-            ),
-
-            discord.SelectOption(
-                label="Server Linking",
-                emoji="🔗",
-                description="Cross-server management commands."
-            ),
-
-            discord.SelectOption(
-                label="Developer",
-                emoji="🧑‍💻",
-                description="Developer-only commands."
-            ),
+            discord.SelectOption(label="Moderation", emoji="🛡️", description="Moderation and punishment commands."),
+            discord.SelectOption(label="Ad-Warn", emoji="⚠️", description="Advertising warning system & quota tracking."),
+            discord.SelectOption(label="Modmail", emoji="📩", description="Support and ticket system commands."),
+            discord.SelectOption(label="Reception", emoji="🎉", description="Welcome, leave, and onboarding systems."),
+            discord.SelectOption(label="Applications", emoji="📄", description="Applications and recruitment system."),
+            discord.SelectOption(label="Leveling", emoji="📈", description="XP and leveling commands."),
+            discord.SelectOption(label="Utility", emoji="⚙️", description="Utility and management commands."),
+            discord.SelectOption(label="Staff", emoji="👥", description="Staff department and quota commands."),
+            discord.SelectOption(label="Staff Teams", emoji="📂", description="Dynamic staff department system."),
+            discord.SelectOption(label="AutoMod", emoji="🤖", description="Automatic moderation system."),
+            discord.SelectOption(label="Analytics", emoji="📊", description="Statistics and analytics commands."),
+            discord.SelectOption(label="Server Linking", emoji="🔗", description="Cross-server management commands."),
+            discord.SelectOption(label="Developer", emoji="🧑‍💻", description="Developer-only commands."),
         ]
-
-        super().__init__(
-            placeholder="Select a command category...",
-            min_values=1,
-            max_values=1,
-            options=options,
-            custom_id="help_menu_dropdown"
-        )
+        super().__init__(placeholder="Select a command category...", min_values=1, max_values=1,
+                         options=options, custom_id="help_menu_dropdown")
 
     async def callback(self, interaction: discord.Interaction):
-
         category = self.values[0]
-
-        embed = discord.Embed(
-            color=discord.Color.blurple()
-        )
-
-        # =====================================================
-        # MODERATION
-        # =====================================================
+        embed = discord.Embed(color=discord.Color.blurple())
 
         if category == "Moderation":
-
             embed.title = "🛡️ Moderation Commands"
-
-            embed.description = (
-                "Cross-server moderation commands "
-                "used by staff members."
-            )
-
-            commands_list = [
-
+            embed.description = "Cross-server moderation commands used by staff members."
+            embed.add_field(name="Available Commands", value="\n".join([
                 "`/warn` → Warn a member.",
+                "`/removewarn` → Remove a specific warning by case ID.",
+                "`/warns` → List active warnings for a user.",
                 "`/timeout` → Timeout a member.",
                 "`/kick` → Kick a member.",
                 "`/ban` → Ban a member.",
@@ -125,409 +41,174 @@ class HelpDropdown(discord.ui.Select):
                 "`/setmodlog` → Configure moderation logs.",
                 "`/purge` → Delete messages.",
                 "`/purgeuser` → Delete messages from a user.",
-            ]
+            ]), inline=False)
 
-            embed.add_field(
-                name="Available Commands",
-                value="\n".join(commands_list),
-                inline=False
-            )
-
-        # =====================================================
-        # MODMAIL
-        # =====================================================
+        elif category == "Ad-Warn":
+            embed.title = "⚠️ Ad‑Warn System"
+            embed.description = "Issue advertising warnings and track weekly staff quotas."
+            embed.add_field(name="Available Commands", value="\n".join([
+                "`/adwarn` → Issue an advertising warning (counts toward weekly quota).",
+                "`/adwarnhistory` → View ad‑warn history for a user.",
+            ]), inline=False)
 
         elif category == "Modmail":
-
             embed.title = "📩 Modmail Commands"
-
-            embed.description = (
-                "Professional support ticket system."
-            )
-
-            commands_list = [
-
+            embed.description = "Professional support ticket system with anonymous replies."
+            embed.add_field(name="Available Commands", value="\n".join([
                 "`/setupmodmail` → Configure modmail category.",
                 "`/panel` → Send modmail panel.",
                 "`DM the bot` → Create a support ticket.",
                 "`Claim Button` → Claim a ticket.",
                 "`Close Button` → Close a ticket.",
-            ]
-
-            embed.add_field(
-                name="Available Commands",
-                value="\n".join(commands_list),
-                inline=False
-            )
-
-        # =====================================================
-        # RECEPTION
-        # =====================================================
+            ]), inline=False)
 
         elif category == "Reception":
-
             embed.title = "🎉 Reception Commands"
-
-            embed.description = (
-                "Reception and onboarding systems."
-            )
-
-            commands_list = [
-
+            embed.description = "Welcome, leave, and onboarding systems."
+            embed.add_field(name="Available Commands", value="\n".join([
                 "`/setwelcome` → Configure welcome messages.",
                 "`/setleave` → Configure leave messages.",
+                "`/togglewelcome` → Enable or disable welcome messages.",
+                "`/toggleleave` → Enable or disable leave messages.",
                 "`/setautorole` → Configure autoroles.",
                 "`/setruleschannel` → Configure rules channel.",
-            ]
-
-            embed.add_field(
-                name="Available Commands",
-                value="\n".join(commands_list),
-                inline=False
-            )
-
-        # =====================================================
-        # APPLICATIONS
-        # =====================================================
+            ]), inline=False)
 
         elif category == "Applications":
-
             embed.title = "📄 Application Commands"
-
-            embed.description = (
-                "Applications and recruitment system."
-            )
-
-            commands_list = [
-
-                "`/applicationpanel` → Send application panel.",
-                "`/createapplication` → Create an application.",
-                "`/applications` → View applications.",
-                "`/acceptapplication` → Accept an application.",
-                "`/denyapplication` → Deny an application.",
-            ]
-
-            embed.add_field(
-                name="Available Commands",
-                value="\n".join(commands_list),
-                inline=False
-            )
-
-        # =====================================================
-        # LEVELING
-        # =====================================================
+            embed.description = "Applications and recruitment system."
+            embed.add_field(name="Available Commands", value="\n".join([
+                "`/sethrchannel` → Set HR log channel.",
+                "`/deployappform` → Deploy application form.",
+                "`/hrlogs` → View HR decision logs.",
+            ]), inline=False)
 
         elif category == "Leveling":
-
             embed.title = "📈 Leveling Commands"
-
-            embed.description = (
-                "XP and ranking system commands."
-            )
-
-            commands_list = [
-
+            embed.description = "XP and ranking system commands."
+            embed.add_field(name="Available Commands", value="\n".join([
                 "`/rank` → View user rank.",
                 "`/leaderboard` → View XP leaderboard.",
-                "`/setlevelchannel` → Configure level-up channel.",
+                "`/setlevelchannel` → Configure level‑up channel.",
                 "`/setxprate` → Configure XP gain rate.",
-            ]
-
-            embed.add_field(
-                name="Available Commands",
-                value="\n".join(commands_list),
-                inline=False
-            )
-
-        # =====================================================
-        # UTILITY
-        # =====================================================
+            ]), inline=False)
 
         elif category == "Utility":
-
             embed.title = "⚙️ Utility Commands"
-
-            embed.description = (
-                "General utility and management commands."
-            )
-
-            commands_list = [
-
+            embed.description = "General utility and management commands."
+            embed.add_field(name="Available Commands", value="\n".join([
                 "`/sticky` → Create sticky messages.",
                 "`/unsticky` → Remove sticky messages.",
                 "`/ping` → View bot latency.",
                 "`/serverinfo` → View server information.",
-            ]
-
-            embed.add_field(
-                name="Available Commands",
-                value="\n".join(commands_list),
-                inline=False
-            )
-
-        # =====================================================
-        # STAFF
-        # =====================================================
+            ]), inline=False)
 
         elif category == "Staff":
-
             embed.title = "👥 Staff Commands"
-
-            embed.description = (
-                "Staff management and quota systems."
-            )
-
-            commands_list = [
-
-                "`/setdepartment` → Assign departments.",
-                "`/removedepartment` → Remove departments.",
-                "`/addrank` → Create staff ranks.",
-                "`/addduty` → Add rank duties.",
-                "`/poststaffdropdown` → Post ranks dropdown.",
-                "`/deployquotamatrix` → Deploy quota dashboard.",
-            ]
-
-            embed.add_field(
-                name="Available Commands",
-                value="\n".join(commands_list),
-                inline=False
-            )
-
-        # =====================================================
-        # STAFF TEAMS
-        # =====================================================
+            embed.description = "Department assignment and quota tracking."
+            embed.add_field(name="Available Commands", value="\n".join([
+                "`/setdepartment` → Assign a staff member to a department.",
+                "`/removedepartment` → Remove a staff member from their department.",
+                "`/listdepartments` → List all staff members and their departments.",
+                "`/addrank` → Create a staff rank.",
+                "`/addduty` → Add duties to a rank.",
+                "`/poststaffdropdown` → Post the ranks dropdown.",
+                "`/deployquotamatrix` → Deploy shift/quota dashboard.",
+            ]), inline=False)
 
         elif category == "Staff Teams":
-
             embed.title = "📂 Staff Team Commands"
-
-            embed.description = (
-                "Dynamic staff department system."
-            )
-
-            commands_list = [
-
+            embed.description = "Dynamic staff department system."
+            embed.add_field(name="Available Commands", value="\n".join([
                 "`/createteam` → Create a staff team.",
                 "`/addmember` → Add a member to a team.",
                 "`/removemember` → Remove a member from a team.",
                 "`/addresponsibility` → Add responsibilities to a team.",
                 "`/poststaffpanel` → Deploy the public staff panel.",
-            ]
-
-            embed.add_field(
-                name="Available Commands",
-                value="\n".join(commands_list),
-                inline=False
-            )
-
-        # =====================================================
-        # AUTOMOD
-        # =====================================================
+            ]), inline=False)
 
         elif category == "AutoMod":
-
             embed.title = "🤖 AutoMod Commands"
-
-            embed.description = (
-                "Automatic moderation configuration."
-            )
-
-            commands_list = [
-
-                "`!automod links true/false` → Toggle anti-links.",
-                "`!automod spam true/false` → Toggle anti-spam.",
+            embed.description = "Automatic moderation configuration."
+            embed.add_field(name="Available Commands", value="\n".join([
+                "`!automod links true/false` → Toggle anti‑links.",
+                "`!automod spam true/false` → Toggle anti‑spam.",
                 "`!automod mentions true/false` → Toggle mention protection.",
                 "`!allowads` → Allow advertisements in channel.",
                 "`!removeads` → Remove advertisement permissions.",
-            ]
-
-            embed.add_field(
-                name="Available Commands",
-                value="\n".join(commands_list),
-                inline=False
-            )
-
-        # =====================================================
-        # ANALYTICS
-        # =====================================================
+            ]), inline=False)
 
         elif category == "Analytics":
-
             embed.title = "📊 Analytics Commands"
-
-            embed.description = (
-                "Bot statistics and analytics."
-            )
-
-            commands_list = [
-
+            embed.description = "Bot statistics and analytics."
+            embed.add_field(name="Available Commands", value="\n".join([
                 "`/dashboard` → View analytics dashboard.",
                 "`/botstats` → View detailed bot statistics.",
-            ]
-
-            embed.add_field(
-                name="Available Commands",
-                value="\n".join(commands_list),
-                inline=False
-            )
-
-        # =====================================================
-        # SERVER LINKING
-        # =====================================================
+            ]), inline=False)
 
         elif category == "Server Linking":
-
             embed.title = "🔗 Server Linking Commands"
-
-            embed.description = (
-                "Cross-server infrastructure management."
-            )
-
-            commands_list = [
-
-                "`/linkservers` → Link staff and public servers.",
-                "`/unlinkservers` → Remove linked servers.",
-                "`/viewlink` → View current linked servers.",
-            ]
-
-            embed.add_field(
-                name="Available Commands",
-                value="\n".join(commands_list),
-                inline=False
-            )
-
-        # =====================================================
-        # DEVELOPER
-        # =====================================================
+            embed.description = "Cross‑server infrastructure management."
+            embed.add_field(name="Available Commands", value="\n".join([
+                "`/linkserver` → Link staff and public servers.",
+                "`/setmainserver` → Set main community server.",
+                "`/setstaffserver` → Set staff control server.",
+                "`/viewconfig` → View current configuration.",
+                "`/resetconfig` → Reset bot configuration.",
+            ]), inline=False)
 
         elif category == "Developer":
-
             if interaction.user.id not in interaction.client.DEVELOPER_IDS:
-
                 embed.title = "🔒 Restricted Category"
-
-                embed.description = (
-                    "You do not have permission "
-                    "to access developer commands."
-                )
-
+                embed.description = "You do not have permission to access developer commands."
                 embed.color = discord.Color.red()
-
-                embed.set_footer(
-                    text="Developer Access Required"
-                )
-
-                return await interaction.response.edit_message(
-                    embed=embed,
-                    view=self.view
-                )
+                embed.set_footer(text="Developer Access Required")
+                return await interaction.response.edit_message(embed=embed, view=self.view)
 
             embed.title = "🧑‍💻 Developer Commands"
-
-            embed.description = (
-                "Developer-only management commands."
-            )
-
-            commands_list = [
-
+            embed.description = "Developer‑only management commands."
+            embed.add_field(name="Available Commands", value="\n".join([
                 "`/sync` → Sync application commands.",
                 "`/reload` → Reload a cog.",
                 "`/load` → Load a cog.",
                 "`/unload` → Unload a cog.",
                 "`/shutdown` → Shutdown the bot.",
+                "`/restart` → Restart the bot (Railway‑safe).",
                 "`/eval` → Execute Python code.",
                 "`/devpanel` → Open developer panel.",
                 "`/blacklistuser` → Blacklist a user globally.",
                 "`/unblacklistuser` → Remove user blacklist.",
                 "`/blacklistguild` → Blacklist a guild globally.",
                 "`/unblacklistguild` → Remove guild blacklist.",
-            ]
+            ]), inline=False)
 
-            embed.add_field(
-                name="Available Commands",
-                value="\n".join(commands_list),
-                inline=False
-            )
-
-        # =====================================================
-        # FINAL STYLING
-        # =====================================================
-
-        embed.set_footer(
-            text=f"Requested by {interaction.user}",
-            icon_url=interaction.user.display_avatar.url
-        )
-
+        embed.set_footer(text=f"Requested by {interaction.user}", icon_url=interaction.user.display_avatar.url)
         embed.timestamp = discord.utils.utcnow()
+        await interaction.response.edit_message(embed=embed, view=self.view)
 
-        await interaction.response.edit_message(
-            embed=embed,
-            view=self.view
-        )
-
-
-# =========================================================
-# HELP VIEW
-# =========================================================
 
 class HelpView(discord.ui.View):
-
     def __init__(self):
-
         super().__init__(timeout=None)
+        self.add_item(HelpDropdown())
 
-        self.add_item(
-            HelpDropdown()
-        )
-
-
-# =========================================================
-# HELP COG
-# =========================================================
 
 class HelpCog(commands.Cog):
-
     def __init__(self, bot):
-
         self.bot = bot
 
-    # =====================================================
-    # /HELP
-    # =====================================================
-
-    @app_commands.command(
-        name="help",
-        description="View all available bot commands."
-    )
-
-    async def help_command(
-        self,
-        interaction: discord.Interaction
-    ):
-
+    @app_commands.command(name="help", description="View all available bot commands.")
+    async def help_command(self, interaction: discord.Interaction):
         embed = discord.Embed(
-
             title="🤖 Bolt Engine Help Center",
-
-            description=(
-
-                "Welcome to the interactive help system.\n\n"
-
-                "Use the dropdown menu below "
-                "to browse all command categories."
-
-            ),
-
+            description="Welcome to the interactive help system.\n\nUse the dropdown menu below to browse all command categories.",
             color=discord.Color.blurple()
         )
-
         embed.add_field(
-
             name="📚 Command Categories",
-
             value=(
-
                 "🛡️ Moderation\n"
+                "⚠️ Ad‑Warn\n"
                 "📩 Modmail\n"
                 "🎉 Reception\n"
                 "📄 Applications\n"
@@ -539,66 +220,28 @@ class HelpCog(commands.Cog):
                 "📊 Analytics\n"
                 "🔗 Server Linking\n"
                 "🧑‍💻 Developer"
-
             ),
-
             inline=False
         )
-
         embed.add_field(
-
             name="✨ Features",
-
             value=(
-
-                "• Cross-Server Moderation\n"
-                "• Linked Server Infrastructure\n"
+                "• Cross‑Server Moderation\n"
+                "• Ad‑Warn Quota System\n"
                 "• Persistent Systems\n"
                 "• Professional Modmail\n"
                 "• Dynamic Staff Teams\n"
-                "• Staff Analytics\n"
                 "• Advanced AutoMod"
-
             ),
-
             inline=False
         )
-
-        if interaction.guild.icon:
-
-            embed.set_thumbnail(
-                url=interaction.guild.icon.url
-            )
-
-        embed.set_footer(
-
-            text=f"{interaction.guild.name}",
-
-            icon_url=(
-                interaction.guild.icon.url
-                if interaction.guild.icon
-                else None
-            )
-        )
-
+        if interaction.guild and interaction.guild.icon:
+            embed.set_thumbnail(url=interaction.guild.icon.url)
+        embed.set_footer(text=interaction.guild.name if interaction.guild else "Bolt Engine",
+                         icon_url=interaction.guild.icon.url if interaction.guild and interaction.guild.icon else None)
         embed.timestamp = discord.utils.utcnow()
+        await interaction.response.send_message(embed=embed, view=HelpView(), ephemeral=False)
 
-        await interaction.response.send_message(
-
-            embed=embed,
-
-            view=HelpView(),
-
-            ephemeral=False
-        )
-
-
-# =========================================================
-# SETUP
-# =========================================================
 
 async def setup(bot):
-
-    await bot.add_cog(
-        HelpCog(bot)
-    )
+    await bot.add_cog(HelpCog(bot))
