@@ -40,12 +40,8 @@ class AdWarnCog(commands.Cog):
     async def log_adwarn(self, interaction, target, reason, evidence):
         db_cog = self.bot.get_cog("DatabaseCog")
         staff_guild, public_guild = await self.get_linked_servers(interaction.guild.id)
-
-        # Generate unique ID
         warn_id = str(uuid.uuid4())[:8].upper()
-
-        # Store in ad_warns collection
-        await db_cog.db["ad_warns"].insert_one({
+        await db_cog.ad_warns.insert_one({
             "warn_id": warn_id,
             "staff_guild_id": str(staff_guild.id) if staff_guild else None,
             "public_guild_id": str(public_guild.id) if public_guild else None,
@@ -57,13 +53,9 @@ class AdWarnCog(commands.Cog):
             "evidence": evidence,
             "timestamp": datetime.utcnow()
         })
-
-        # Increment weekly quota counter for the staff member
         quota_cog = self.bot.get_cog("StaffQuotaCog")
         if quota_cog:
             await quota_cog.log_quota_activity(interaction.user.id, "weekly_adwarns_executed", 1)
-
-        # Log to staff mod‑log channel
         if staff_guild:
             config = await db_cog.settings.find_one({"_id": f"modlog_{staff_guild.id}"})
             if config:
@@ -81,28 +73,19 @@ class AdWarnCog(commands.Cog):
                         embed.add_field(name="Evidence", value=evidence, inline=False)
                     embed.set_footer(text=f"Ad‑Warn ID: {warn_id}")
                     await channel.send(embed=embed)
-
         return warn_id
 
-    # ------------------------------------------------------------
-    # /adwarn
-    # ------------------------------------------------------------
     @app_commands.command(name="adwarn", description="Issue an advertising warning (counts toward weekly quota).")
     @staff_or_developer(moderate_members=True)
     async def adwarn(self, interaction: discord.Interaction, target: discord.User,
                      reason: str, evidence: str = None):
         await interaction.response.defer(ephemeral=True)
-
         if not await self.ensure_staff_server(interaction):
             return await interaction.followup.send("❌ This command must be used in the staff server.", ephemeral=True)
-
         target_member = await self.get_public_member(interaction, target.id)
         if not target_member:
             return await interaction.followup.send("❌ User not found in the linked public server.", ephemeral=True)
-
         warn_id = await self.log_adwarn(interaction, target_member, reason, evidence)
-
-        # Optional DM to user
         try:
             embed = discord.Embed(
                 title="Advertising Warning",
@@ -116,23 +99,16 @@ class AdWarnCog(commands.Cog):
             await target_member.send(embed=embed)
         except Exception:
             pass
-
         await interaction.followup.send(f"✅ Ad‑warn issued to {target_member.mention}. (ID: `{warn_id}`)")
 
-    # ------------------------------------------------------------
-    # /adwarnhistory
-    # ------------------------------------------------------------
     @app_commands.command(name="adwarnhistory", description="View ad‑warn history for a user.")
     @staff_or_developer(moderate_members=True)
     async def adwarn_history(self, interaction: discord.Interaction, target: discord.User):
         await interaction.response.defer(ephemeral=True)
-
         db_cog = self.bot.get_cog("DatabaseCog")
-        warns = await db_cog.db["ad_warns"].find({"target_id": str(target.id)}).sort("timestamp", -1).limit(10).to_list(None)
-
+        warns = await db_cog.ad_warns.find({"target_id": str(target.id)}).sort("timestamp", -1).limit(10).to_list(None)
         if not warns:
             return await interaction.followup.send(f"📭 No ad‑warns found for {target.mention}.", ephemeral=True)
-
         embed = discord.Embed(title=f"Ad‑Warn History for {target.display_name}", color=discord.Color.red())
         for w in warns:
             embed.add_field(
