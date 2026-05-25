@@ -61,7 +61,6 @@ class DeveloperCog(commands.Cog):
     async def restart(self, interaction: discord.Interaction):
         await interaction.response.send_message("🔄 Restarting bot...", ephemeral=True)
         await self.bot.close()
-        # After close, exit the process; Railway will restart automatically
         sys.exit(0)
 
     @app_commands.command(name="eval", description="Execute Python code.")
