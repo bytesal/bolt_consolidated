@@ -3,8 +3,10 @@ from discord import app_commands
 from discord.ext import commands
 from datetime import datetime
 import uuid
-
+from utils.logger import get_logger
 from utils.checks import staff_or_developer
+
+logger = get_logger("adwarn")
 
 
 class AdWarnCog(commands.Cog):
@@ -61,11 +63,7 @@ class AdWarnCog(commands.Cog):
             if config:
                 channel = staff_guild.get_channel(int(config["value"]))
                 if channel:
-                    embed = discord.Embed(
-                        title="⚠️ Ad‑Warn Issued",
-                        color=discord.Color.dark_red(),
-                        timestamp=datetime.utcnow()
-                    )
+                    embed = discord.Embed(title="⚠️ Ad‑Warn Issued", color=discord.Color.dark_red(), timestamp=datetime.utcnow())
                     embed.add_field(name="User", value=f"{target.mention} (`{target.id}`)", inline=False)
                     embed.add_field(name="Moderator", value=interaction.user.mention, inline=False)
                     embed.add_field(name="Reason", value=reason, inline=False)
@@ -73,9 +71,11 @@ class AdWarnCog(commands.Cog):
                         embed.add_field(name="Evidence", value=evidence, inline=False)
                     embed.set_footer(text=f"Ad‑Warn ID: {warn_id}")
                     await channel.send(embed=embed)
+        logger.info(f"Ad-warn {warn_id} issued by {interaction.user.id} to {target.id}")
         return warn_id
 
     @app_commands.command(name="adwarn", description="Issue an advertising warning (counts toward weekly quota).")
+    @app_commands.checks.cooldown(1, 5)
     @staff_or_developer(moderate_members=True)
     async def adwarn(self, interaction: discord.Interaction, target: discord.User,
                      reason: str, evidence: str = None):
@@ -87,11 +87,7 @@ class AdWarnCog(commands.Cog):
             return await interaction.followup.send("❌ User not found in the linked public server.", ephemeral=True)
         warn_id = await self.log_adwarn(interaction, target_member, reason, evidence)
         try:
-            embed = discord.Embed(
-                title="Advertising Warning",
-                description=f"You have received an advertising warning in **{interaction.guild.name}**.",
-                color=discord.Color.red()
-            )
+            embed = discord.Embed(title="Advertising Warning", description=f"You have received an advertising warning in **{interaction.guild.name}**.", color=discord.Color.red())
             embed.add_field(name="Reason", value=reason, inline=False)
             if evidence:
                 embed.add_field(name="Evidence", value=evidence, inline=False)
@@ -111,11 +107,7 @@ class AdWarnCog(commands.Cog):
             return await interaction.followup.send(f"📭 No ad‑warns found for {target.mention}.", ephemeral=True)
         embed = discord.Embed(title=f"Ad‑Warn History for {target.display_name}", color=discord.Color.red())
         for w in warns:
-            embed.add_field(
-                name=f"ID: {w['warn_id']}",
-                value=f"Reason: {w['reason']}\nIssued by: {w['issuer_name']}\nDate: {w['timestamp'].strftime('%Y-%m-%d %H:%M')}",
-                inline=False
-            )
+            embed.add_field(name=f"ID: {w['warn_id']}", value=f"Reason: {w['reason']}\nIssued by: {w['issuer_name']}\nDate: {w['timestamp'].strftime('%Y-%m-%d %H:%M')}", inline=False)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
 
