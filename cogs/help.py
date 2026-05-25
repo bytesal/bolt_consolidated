@@ -3,8 +3,25 @@ from discord.ext import commands
 from discord import app_commands
 from datetime import datetime
 
-# Emoji constants for categories
+# ------------------------------- CATEGORY METADATA -------------------------------
+
 CATEGORY_EMOJIS = {
+    "Moderation": "<:mod:133456789012345678>",
+    "Ad-Warn": "<:adwarn:133456789012345679>",
+    "Modmail": "<:modmail:133456789012345680>",
+    "Reception": "<:reception:133456789012345681>",
+    "Applications": "<:apps:133456789012345682>",
+    "Leveling": "<:leveling:133456789012345683>",
+    "Utility": "<:utility:133456789012345684>",
+    "Staff": "<:staff:133456789012345685>",
+    "Staff Teams": "<:team:133456789012345686>",
+    "AutoMod": "<:automod:133456789012345687>",
+    "Analytics": "<:analytics:133456789012345688>",
+    "Server Linking": "<:link:133456789012345689>",
+    "Developer": "<:dev:133456789012345690>"
+}
+# Fallback to regular emojis if custom ones are not available
+DEFAULT_EMOJIS = {
     "Moderation": "🛡️",
     "Ad-Warn": "⚠️",
     "Modmail": "📩",
@@ -20,118 +37,117 @@ CATEGORY_EMOJIS = {
     "Developer": "🧑‍💻"
 }
 
-# Command lists (keep these up to date)
 COMMANDS_BY_CATEGORY = {
     "Moderation": [
         "`/warn` – Warn a member (expires after set days)",
-        "`/removewarn` – Remove a specific warning by case ID",
-        "`/warns` – List active warnings for a user",
-        "`/setwarnexpiry` – Set days until warnings expire",
-        "`/casenote` – Add a private note to a case",
-        "`/caseview` – View a case with all notes",
-        "`/timeout` – Timeout a member",
-        "`/ban` – Ban a member",
-        "`/kick` – Kick a member",
-        "`/history` – View moderation history",
-        "`/setmodlog` – Configure moderation logs",
-        "`/purge` – Delete messages",
-        "`/purgeuser` – Delete messages from a user"
+        "`/removewarn` – Remove a warning by case ID",
+        "`/warns` – List active warnings",
+        "`/setwarnexpiry` – Set expiry days",
+        "`/casenote` – Add private note",
+        "`/caseview` – View case details",
+        "`/timeout` – Timeout member",
+        "`/ban` – Ban member",
+        "`/kick` – Kick member",
+        "`/history` – View history",
+        "`/setmodlog` – Set log channel",
+        "`/purge` – Bulk delete",
+        "`/purgeuser` – Delete by user"
     ],
     "Ad-Warn": [
-        "`/adwarn` – Issue an advertising warning (counts toward weekly quota)",
-        "`/adwarnhistory` – View ad‑warn history for a user"
+        "`/adwarn` – Issue ad warning (counts toward quota)",
+        "`/adwarnhistory` – View ad-warn history"
     ],
     "Modmail": [
-        "`/setupmodmail` – Configure modmail category and transcript channel",
-        "`/panel` – Send modmail panel",
-        "`DM the bot` – Create a support ticket",
-        "`Claim Button` – Claim a ticket (prevents others from replying)",
-        "`Unclaim Button` – Release a claimed ticket",
-        "`Close Button` – Close a ticket (saves transcript)"
+        "`/setupmodmail` – Configure modmail",
+        "`/panel` – Send ticket panel",
+        "`DM the bot` – Create ticket",
+        "`Claim` – Take ticket",
+        "`Unclaim` – Release ticket",
+        "`Close` – Close & save transcript"
     ],
     "Reception": [
-        "`/setwelcome` – Configure welcome messages",
-        "`/setleave` – Configure leave messages",
-        "`/togglewelcome` – Enable or disable welcome messages",
-        "`/toggleleave` – Enable or disable leave messages"
+        "`/setwelcome` – Set welcome message",
+        "`/setleave` – Set leave message",
+        "`/togglewelcome` – Enable/disable welcome",
+        "`/toggleleave` – Enable/disable leave"
     ],
     "Applications": [
-        "`/sethrchannel` – Set HR log channel",
-        "`/deployappform` – Deploy application form",
-        "`/hrlogs` – View HR decision logs"
+        "`/sethrchannel` – Set HR channel",
+        "`/deployappform` – Post application form",
+        "`/hrlogs` – View HR logs"
     ],
     "Leveling": [
-        "`/rank` – View user rank",
-        "`/leaderboard` – View XP leaderboard"
+        "`/rank` – View rank",
+        "`/leaderboard` – XP leaderboard"
     ],
     "Utility": [
-        "`/sticky` – Create sticky messages",
-        "`/unsticky` – Remove sticky messages",
-        "`/ping` – View bot latency",
-        "`/serverinfo` – View server information",
-        "`/addreactrole` – Add a reaction role to a message",
-        "`/removereactrole` – Remove a reaction role",
-        "`/restoreroles` – Manually restore roles from backup"
+        "`/sticky` – Create sticky message",
+        "`/unsticky` – Remove sticky",
+        "`/ping` – Bot latency",
+        "`/serverinfo` – Server info",
+        "`/addreactrole` – Reaction role",
+        "`/removereactrole` – Remove reaction role",
+        "`/restoreroles` – Restore roles"
     ],
     "Staff": [
-        "`/setdepartment` – Assign a staff member to a department",
-        "`/removedepartment` – Remove a staff member from their department",
-        "`/listdepartments` – List all staff members and their departments",
-        "`/addrank` – Create a staff rank",
-        "`/addduty` – Add duties to a rank",
-        "`/poststaffdropdown` – Post the ranks dropdown",
-        "`/deployquotamatrix` – Deploy shift/quota dashboard",
-        "`/setauditchannel` – Set the channel for audit log notifications",
-        "`/auditlog` – View recent audit log entries"
+        "`/setdepartment` – Assign department",
+        "`/removedepartment` – Remove department",
+        "`/listdepartments` – List assignments",
+        "`/addrank` – Create staff rank",
+        "`/addduty` – Add rank duty",
+        "`/poststaffdropdown` – Show ranks",
+        "`/deployquotamatrix` – Quota dashboard",
+        "`/setauditchannel` – Set audit channel",
+        "`/auditlog` – View audit log"
     ],
     "Staff Teams": [
-        "`/createteam` – Create a staff team",
-        "`/addmember` – Add a member to a team",
-        "`/removemember` – Remove a member from a team",
-        "`/addresponsibility` – Add responsibilities to a team",
-        "`/poststaffpanel` – Deploy the public staff panel"
+        "`/createteam` – Create team",
+        "`/addmember` – Add member",
+        "`/removemember` – Remove member",
+        "`/addresponsibility` – Add duty",
+        "`/poststaffpanel` – Show team panel"
     ],
     "AutoMod": [
         "`!automod links true/false` – Toggle anti‑links",
-        "`!automod spam true/false` – Toggle anti‑spam (punishment)",
-        "`!automod mentions true/false` – Toggle mention protection",
-        "`!automod slowmode true/false` – Toggle auto‑slowmode on spam",
-        "`!allowads` – Allow advertisements in channel",
-        "`!removeads` – Remove advertisement permissions"
+        "`!automod spam true/false` – Toggle punishment spam",
+        "`!automod mentions true/false` – Mention protection",
+        "`!automod slowmode true/false` – Toggle auto‑slowmode",
+        "`!allowads` – Allow ads in channel",
+        "`!removeads` – Disallow ads"
     ],
     "Analytics": [
-        "`/dashboard` – View analytics dashboard",
-        "`/botstats` – View detailed bot statistics"
+        "`/dashboard` – Bot analytics",
+        "`/botstats` – Detailed stats"
     ],
     "Server Linking": [
-        "`/linkserver` – Link staff and public servers",
-        "`/setmainserver` – Set main community server",
-        "`/setstaffserver` – Set staff control server",
-        "`/viewconfig` – View current configuration",
-        "`/resetconfig` – Reset bot configuration"
+        "`/linkserver` – Link staff and public guilds",
+        "`/setmainserver` – Set main server",
+        "`/setstaffserver` – Set staff server",
+        "`/viewconfig` – View config",
+        "`/resetconfig` – Reset config"
     ],
     "Developer": [
-        "`/sync` – Sync application commands",
-        "`/reload` – Reload a cog",
-        "`/load` – Load a cog",
-        "`/unload` – Unload a cog",
-        "`/shutdown` – Shutdown the bot",
-        "`/restart` – Restart the bot (Railway‑safe)",
-        "`/eval` – Execute Python code",
-        "`/devpanel` – Open developer panel",
-        "`/blacklistuser` – Blacklist a user globally",
+        "`/sync` – Sync commands",
+        "`/reload` – Reload cog",
+        "`/load` – Load cog",
+        "`/unload` – Unload cog",
+        "`/shutdown` – Shut down",
+        "`/restart` – Restart",
+        "`/eval` – Execute code",
+        "`/devpanel` – Dev panel",
+        "`/blacklistuser` – Global user blacklist",
         "`/unblacklistuser` – Remove user blacklist",
-        "`/blacklistguild` – Blacklist a guild globally",
+        "`/blacklistguild` – Global guild blacklist",
         "`/unblacklistguild` – Remove guild blacklist"
     ]
 }
 
-
+# ------------------------------- DROPDOWN -------------------------------
 class HelpDropdown(discord.ui.Select):
     def __init__(self):
         options = []
         for category in COMMANDS_BY_CATEGORY.keys():
-            emoji = CATEGORY_EMOJIS.get(category, "📌")
+            emoji = DEFAULT_EMOJIS.get(category, "📌")
             options.append(
                 discord.SelectOption(
                     label=category,
@@ -141,7 +157,7 @@ class HelpDropdown(discord.ui.Select):
                 )
             )
         super().__init__(
-            placeholder="📂 Select a command category...",
+            placeholder="📂 Select a category",
             min_values=1,
             max_values=1,
             options=options,
@@ -154,11 +170,11 @@ class HelpDropdown(discord.ui.Select):
         await interaction.response.edit_message(embed=embed, view=self.view)
 
     def _build_category_embed(self, interaction: discord.Interaction, category: str) -> discord.Embed:
-        emoji = CATEGORY_EMOJIS.get(category, "📌")
+        emoji = DEFAULT_EMOJIS.get(category, "📌")
         commands_list = COMMANDS_BY_CATEGORY.get(category, ["No commands available."])
         embed = discord.Embed(
-            title=f"{emoji} {category} Commands",
-            description=f"Here are all the {category.lower()} commands available in Bolt Engine.",
+            title=f"{emoji}  {category} Commands",
+            description=f"Here are all the **{category.lower()}** commands available in Bolt Engine.\n\u200b",
             color=discord.Color.blurple(),
             timestamp=datetime.utcnow()
         )
@@ -166,7 +182,7 @@ class HelpDropdown(discord.ui.Select):
         chunks = [commands_list[i:i+10] for i in range(0, len(commands_list), 10)]
         for i, chunk in enumerate(chunks):
             embed.add_field(
-                name=f"📖 Command Group {i+1}" if len(chunks) > 1 else "Available Commands",
+                name="Commands" if len(chunks) == 1 else f"Commands (Part {i+1})",
                 value="\n".join(chunk),
                 inline=False
             )
@@ -184,6 +200,7 @@ class HelpView(discord.ui.View):
         self.add_item(HelpDropdown())
 
 
+# ------------------------------- MAIN COG -------------------------------
 class HelpCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -195,33 +212,40 @@ class HelpCog(commands.Cog):
         await interaction.followup.send(embed=embed, view=HelpView(), ephemeral=False)
 
     def _build_main_embed(self, interaction: discord.Interaction) -> discord.Embed:
+        # Create a clean, modern main embed
         embed = discord.Embed(
-            title="🤖 Bolt Engine Help Center",
+            title="⚙️ **Bolt Engine Help Center**",
             description=(
-                "Welcome to the interactive help system.\n\n"
-                "Use the dropdown menu below to browse all command categories.\n"
-                "Each category contains detailed information about available commands."
+                "Welcome to the interactive help system.\n"
+                "Select a category from the dropdown below to explore commands.\n"
+                "\u200b"
             ),
             color=discord.Color.blurple(),
             timestamp=datetime.utcnow()
         )
-        # Add a summary field
-        categories_list = "\n".join([f"{CATEGORY_EMOJIS.get(cat, '📌')} **{cat}**" for cat in COMMANDS_BY_CATEGORY.keys()])
-        embed.add_field(
-            name="📚 Command Categories",
-            value=categories_list,
-            inline=False
+        # Categories as a clean inline field (4 per row emojis)
+        categories_text = ""
+        for cat in COMMANDS_BY_CATEGORY.keys():
+            emoji = DEFAULT_EMOJIS.get(cat, "📌")
+            categories_text += f"{emoji} **{cat}**\n"
+        embed.add_field(name="📚 **Categories**", value=categories_text, inline=True)
+
+        # Key features inline
+        features = (
+            "• Cross‑Server Moderation\n"
+            "• Ad‑Warn Quota System\n"
+            "• Professional Modmail\n"
+            "• Persistent Views\n"
+            "• Role Persistence\n"
+            "• Advanced AutoMod & Slowmode\n"
+            "• Staff Quotas & Departments"
         )
+        embed.add_field(name="✨ **Key Features**", value=features, inline=True)
+
+        # Tip or info field
         embed.add_field(
-            name="✨ Key Features",
-            value=(
-                "• Cross‑Server Moderation\n"
-                "• Ad‑Warn Quota System\n"
-                "• Professional Modmail with Transcripts\n"
-                "• Persistent Views & Role Persistence\n"
-                "• Advanced AutoMod & Slowmode\n"
-                "• Staff Quotas & Department Management"
-            ),
+            name="💡 **Tip**",
+            value="Use `/sync` to update slash commands after bot updates.\nNeed help? Join our [Support Server](https://discord.gg/invite) (replace with actual invite).",
             inline=False
         )
         embed.set_thumbnail(url=interaction.client.user.display_avatar.url)
