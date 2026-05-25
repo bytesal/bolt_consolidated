@@ -3,6 +3,9 @@ from discord.ext import commands
 from discord import app_commands
 from datetime import datetime
 import json
+from utils.logger import get_logger
+
+logger = get_logger("audit")
 
 
 class AuditCog(commands.Cog):
@@ -12,7 +15,6 @@ class AuditCog(commands.Cog):
     async def log_audit(self, guild_id: int, action: str, actor_id: int, actor_name: str,
                         target_id: int = None, target_name: str = None,
                         details: dict = None, severity: str = "info"):
-        """Log an audit entry to database and optional Discord channel."""
         db_cog = self.bot.get_cog("DatabaseCog")
         if not db_cog:
             return
@@ -28,8 +30,8 @@ class AuditCog(commands.Cog):
             "timestamp": datetime.utcnow()
         }
         await db_cog.audit_log.insert_one(entry)
+        logger.info(f"Audit: {action} by {actor_name} (guild {guild_id})")
 
-        # Optional: send to a Discord audit channel if configured
         config = await db_cog.settings.find_one({"_id": f"audit_channel_{guild_id}"})
         if config:
             channel = self.bot.get_channel(int(config["value"]))
@@ -58,6 +60,7 @@ class AuditCog(commands.Cog):
             upsert=True
         )
         await interaction.response.send_message(f"✅ Audit log channel set to {channel.mention}")
+        logger.info(f"Audit channel set by {interaction.user.id} to {channel.id}")
 
     @app_commands.command(name="auditlog", description="View recent audit log entries.")
     @app_commands.default_permissions(administrator=True)
