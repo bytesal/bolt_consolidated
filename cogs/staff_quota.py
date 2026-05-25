@@ -85,113 +85,6 @@ class StaffQuotaView(discord.ui.View):
         super().__init__(timeout=None)
         self.bot = bot
 
-    @discord.ui.button(
-        label="Start Shift",
-        style=discord.ButtonStyle.green,
-        custom_id="shift_start_btn_persistent",
-    )
-    async def start_shift(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ):
-        await interaction.response.defer(ephemeral=True)
-
-        db_cog = self.bot.get_cog("DatabaseCog")
-        if not db_cog:
-            return await interaction.followup.send(
-                "❌ Database connection unavailable.", ephemeral=True
-            )
-
-        await db_cog.staff_quota_profiles.update_one(
-            {"_id": str(interaction.user.id)},
-            {"$set": {"shift_start": datetime.datetime.utcnow().timestamp()}},
-            upsert=True,
-        )
-        await interaction.followup.send(
-            "⏱️ Shift started. Your time is now being tracked.", ephemeral=True
-        )
-
-    @discord.ui.button(
-        label="End Shift",
-        style=discord.ButtonStyle.red,
-        custom_id="shift_end_btn_persistent",
-    )
-    async def end_shift(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ):
-        await interaction.response.defer(ephemeral=True)
-
-        db_cog = self.bot.get_cog("DatabaseCog")
-        if not db_cog:
-            return await interaction.followup.send(
-                "❌ Database connection unavailable.", ephemeral=True
-            )
-
-        prof = await db_cog.staff_quota_profiles.find_one({"_id": str(interaction.user.id)})
-        if not prof or not prof.get("shift_start"):
-            return await interaction.followup.send(
-                "❌ You do not have an active shift running.", ephemeral=True
-            )
-
-        elapsed = (
-            datetime.datetime.utcnow().timestamp() - prof["shift_start"]
-        ) / 3600.0
-
-        await db_cog.staff_quota_profiles.update_one(
-            {"_id": str(interaction.user.id)},
-            {
-                "$set": {"shift_start": None},
-                "$inc": {"total_shift_hours": elapsed},
-            },
-            upsert=True,
-        )
-        await interaction.followup.send(
-            f"🏁 Shift ended. `{round(elapsed, 2)}` hours added to your profile.",
-            ephemeral=True,
-        )
-
-    @discord.ui.button(
-        label="Check Quota",
-        style=discord.ButtonStyle.blurple,
-        custom_id="quota_inspect_btn_persistent",
-    )
-    async def check_quota(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ):
-        await interaction.response.defer(ephemeral=True)
-
-        db_cog = self.bot.get_cog("DatabaseCog")
-        if not db_cog:
-            return await interaction.followup.send(
-                "❌ Database connection unavailable.", ephemeral=True
-            )
-
-        prof = await db_cog.staff_quota_profiles.find_one(
-            {"_id": str(interaction.user.id)}
-        ) or {}
-
-        dept = prof.get("department")
-        if not dept or dept not in DEPARTMENT_QUOTAS:
-            return await interaction.followup.send(
-                "⚠️ You have not been assigned to a department yet.", ephemeral=True
-            )
-
-        quotas = DEPARTMENT_QUOTAS[dept]
-        embed = discord.Embed(
-            title=f"Weekly Quota — {dept.upper()}",
-            color=discord.Color.blue(),
-        )
-        for field, target in quotas.items():
-            completed = prof.get(field, 0)
-            label     = field.replace("_", " ").title()
-            status    = "✅" if completed >= target else "❌"
-            embed.add_field(
-                name=f"{status} {label}",
-                value=f"`{completed}` / `{target}`",
-                inline=False,
-            )
-
-        await interaction.followup.send(embed=embed, ephemeral=True)
-
 
 # ---------------------------------------------------------------------------
 # Cog
@@ -205,25 +98,6 @@ class StaffQuotaCog(commands.Cog):
     def cog_unload(self):
         self.weekly_evaluation_loop.cancel()
 
-    # ------------------------------------------------------------------
-    # Quota activity logger (called by other cogs)
-    # ------------------------------------------------------------------
-
-    async def log_quota_activity(
-        self, user_id: int, quota_field: str, amount: int = 1
-    ):
-        db_cog = self.bot.get_cog("DatabaseCog")
-        if db_cog:
-            await db_cog.staff_quota_profiles.update_one(
-                {"_id": str(user_id)},
-                {"$inc": {quota_field: amount}},
-                upsert=True,
-            )
-
-    # ------------------------------------------------------------------
-    # Weekly reset + strike evaluation (runs every 5 min, acts on Saturday 23:55+)
-    # ------------------------------------------------------------------
-
     @tasks.loop(minutes=5.0)
     async def weekly_evaluation_loop(self):
         now = datetime.datetime.utcnow()
@@ -234,32 +108,18 @@ class StaffQuotaCog(commands.Cog):
 
             async for profile in db_cog.staff_quota_profiles.find():
                 u_id = profile["_id"]
-                dept = profile.get("department")
 
-                # Check whether the member met their quota
-                if dept and dept in DEPARTMENT_QUOTAS:
-                    requirements = DEPARTMENT_QUOTAS[dept]
-                    missed = any(
-                        profile.get(field, 0) < target
-                        for field, target in requirements.items()
-                    )
-                    if missed:
-                        await db_cog.staff_quota_profiles.update_one(
-                            {"_id": u_id}, {"$inc": {"total_strikes": 1}}
-                        )
-
-                # Reset all weekly counters
                 await db_cog.staff_quota_profiles.update_one(
                     {"_id": u_id},
                     {
                         "$set": {
-                            "weekly_messages":        0,
-                            "weekly_ads_staff":       0,
-                            "weekly_ads_server":      0,
-                            "weekly_hires":           0,
-                            "weekly_mod_actions":     0,
-                            "weekly_partnerships":    0,
-                            "weekly_checks":          0,
+                            "weekly_messages": 0,
+                            "weekly_ads_staff": 0,
+                            "weekly_ads_server": 0,
+                            "weekly_hires": 0,
+                            "weekly_mod_actions": 0,
+                            "weekly_partnerships": 0,
+                            "weekly_checks": 0,
                             "weekly_adwarns_executed": 0,
                         }
                     },
@@ -351,146 +211,75 @@ class StaffQuotaCog(commands.Cog):
         )
 
     # ------------------------------------------------------------------
-    # /addrank
+    # /listdepartments
     # ------------------------------------------------------------------
 
     @app_commands.command(
-        name="addrank",
-        description="Create a new staff rank profile.",
+        name="listdepartments",
+        description="List all staff members and their assigned departments.",
     )
-    @app_commands.describe(
-        name="The rank name.",
-        emoji="An emoji to represent this rank.",
-        description="A brief description of the rank.",
-    )
-    async def add_rank_command(
-        self,
-        interaction: discord.Interaction,
-        name: str,
-        emoji: str,
-        description: str,
-    ):
+    async def list_departments(self, interaction: discord.Interaction):
+
         if (
             not interaction.user.guild_permissions.administrator
             and interaction.user.id not in self.bot.DEVELOPER_IDS
         ):
             return await interaction.response.send_message(
-                "❌ Administrator permission required.", ephemeral=True
+                "❌ Administrator permission required.",
+                ephemeral=True,
             )
 
         db_cog = self.bot.get_cog("DatabaseCog")
+
         if not db_cog:
             return await interaction.response.send_message(
-                "❌ Database connection unavailable.", ephemeral=True
+                "❌ Database connection unavailable.",
+                ephemeral=True,
             )
 
-        await db_cog.staff_ranks.update_one(
-            {"name": name},
-            {"$set": {"emoji": emoji, "description": description, "duties": []}},
-            upsert=True,
+        profiles = await db_cog.staff_quota_profiles.find().to_list(None)
+
+        embed = discord.Embed(
+            title="📋 Department Assignments",
+            color=discord.Color.blue(),
         )
-        await interaction.response.send_message(f"✅ Rank **{name}** created successfully.")
 
-    # ------------------------------------------------------------------
-    # /addduty
-    # ------------------------------------------------------------------
+        dept_map = {}
 
-    @app_commands.command(
-        name="addduty",
-        description="Add a responsibility to an existing staff rank.",
-    )
-    @app_commands.describe(
-        rank_name="The name of the rank to update.",
-        responsibility_text="The duty or responsibility to add.",
-    )
-    async def add_duty_command(
-        self,
-        interaction: discord.Interaction,
-        rank_name: str,
-        responsibility_text: str,
-    ):
-        if (
-            not interaction.user.guild_permissions.administrator
-            and interaction.user.id not in self.bot.DEVELOPER_IDS
-        ):
-            return await interaction.response.send_message(
-                "❌ Administrator permission required.", ephemeral=True
+        for profile in profiles:
+            department = profile.get("department")
+
+            if not department:
+                continue
+
+            try:
+                user_id = int(profile["_id"])
+            except (ValueError, TypeError):
+                continue
+
+            member = interaction.guild.get_member(user_id)
+
+            display_name = (
+                member.display_name
+                if member
+                else f"User {user_id}"
             )
 
-        db_cog = self.bot.get_cog("DatabaseCog")
-        if not db_cog:
-            return await interaction.response.send_message(
-                "❌ Database connection unavailable.", ephemeral=True
-            )
+            dept_map.setdefault(department, []).append(display_name)
 
-        result = await db_cog.staff_ranks.update_one(
-            {"name": rank_name},
-            {"$push": {"duties": responsibility_text}},
-        )
-        if result.matched_count == 0:
-            return await interaction.response.send_message(
-                f"❌ Rank `{rank_name}` not found.", ephemeral=True
-            )
+        if not dept_map:
+            embed.description = "No department assignments found."
+        else:
+            for department, members in sorted(dept_map.items()):
+                embed.add_field(
+                    name=department.upper(),
+                    value=", ".join(members) if members else "None",
+                    inline=False,
+                )
 
         await interaction.response.send_message(
-            f"✅ Duty added to rank **{rank_name}**."
-        )
-
-    # ------------------------------------------------------------------
-    # /poststaffdropdown
-    # ------------------------------------------------------------------
-
-    @app_commands.command(
-        name="poststaffdropdown",
-        description="Post the staff ranks overview dropdown in the current channel.",
-    )
-    async def post_staff_dropdown(self, interaction: discord.Interaction):
-        if (
-            not interaction.user.guild_permissions.administrator
-            and interaction.user.id not in self.bot.DEVELOPER_IDS
-        ):
-            return await interaction.response.send_message(
-                "❌ Administrator permission required.", ephemeral=True
-            )
-
-        db_cog = self.bot.get_cog("DatabaseCog")
-        if not db_cog:
-            return await interaction.response.send_message(
-                "❌ Database connection unavailable.", ephemeral=True
-            )
-
-        ranks_map = {}
-        async for r in db_cog.staff_ranks.find():
-            ranks_map[r["name"]] = r.get("description", "")
-
-        if not ranks_map:
-            ranks_map["No Ranks Configured"] = "Please add ranks using /addrank."
-
-        await interaction.response.send_message(
-            "📌 **Staff Ranks Overview**",
-            view=RanksDropdownView(ranks_map),
-        )
-
-    # ------------------------------------------------------------------
-    # /deployquotamatrix
-    # ------------------------------------------------------------------
-
-    @app_commands.command(
-        name="deployquotamatrix",
-        description="Deploy the staff shift and quota tracking dashboard.",
-    )
-    async def deploy_quota_matrix(self, interaction: discord.Interaction):
-        if (
-            not interaction.user.guild_permissions.administrator
-            and interaction.user.id not in self.bot.DEVELOPER_IDS
-        ):
-            return await interaction.response.send_message(
-                "❌ Administrator permission required.", ephemeral=True
-            )
-
-        await interaction.response.send_message(
-            "💼 **Staff Shift & Quota Dashboard**",
-            view=StaffQuotaView(self.bot),
+            embed=embed,
+            ephemeral=True,
         )
 
 
