@@ -4,6 +4,9 @@ from datetime import datetime, timedelta
 import asyncio
 import re
 import time
+from utils.logger import get_logger
+
+logger = get_logger("automod")
 
 INVITE_REGEX = r"(discord\.gg\/|discord\.com\/invite\/)"
 URL_REGEX = r"(https?:\/\/[^\s]+)"
@@ -13,7 +16,7 @@ class AutoModCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.spam_cache = {}
-        self.slowmode_tasks = {}  # guild_id: asyncio.Task
+        self.slowmode_tasks = {}
 
     async def get_settings(self, guild_id):
         db_cog = self.bot.get_cog("DatabaseCog")
@@ -31,9 +34,9 @@ class AutoModCog(commands.Cog):
                 "spam_seconds": 6,
                 "punishment": "timeout",
                 "timeout_duration": 10,
-                "anti_spam_slowmode": False,      # new
-                "slowmode_duration": 5,            # seconds
-                "slowmode_trigger": 20,            # messages in 5 seconds
+                "anti_spam_slowmode": False,
+                "slowmode_duration": 5,
+                "slowmode_trigger": 20,
             }
             await db_cog.automod.insert_one(settings)
         return settings
@@ -59,13 +62,10 @@ class AutoModCog(commands.Cog):
                 pass
 
     async def enable_slowmode(self, channel, duration_seconds, guild_id):
-        """Enable slowmode and schedule removal if needed."""
         try:
             await channel.edit(slowmode_delay=duration_seconds)
-            # Cancel any existing task for this guild
             if guild_id in self.slowmode_tasks:
                 self.slowmode_tasks[guild_id].cancel()
-            # Schedule removal after 60 seconds
             async def reset_slowmode():
                 await asyncio.sleep(60)
                 try:
@@ -76,8 +76,8 @@ class AutoModCog(commands.Cog):
                     self.slowmode_tasks.pop(guild_id, None)
             task = asyncio.create_task(reset_slowmode())
             self.slowmode_tasks[guild_id] = task
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to enable slowmode in {channel.id}: {e}")
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -92,7 +92,6 @@ class AutoModCog(commands.Cog):
 
         settings = await self.get_settings(message.guild.id)
 
-        # Anti-links
         if settings.get("anti_links"):
             if re.search(URL_REGEX, message.content):
                 try:
@@ -106,9 +105,9 @@ class AutoModCog(commands.Cog):
                 except Exception:
                     pass
                 await self.punish(message.author, "AutoMod: Links detected.", settings)
+                logger.info(f"Anti-link triggered for {message.author.id} in {message.guild.id}")
                 return
 
-        # Anti-invites
         if settings.get("anti_invites"):
             allowed = settings.get("allowed_ad_channels", [])
             if re.search(INVITE_REGEX, message.content):
@@ -125,7 +124,6 @@ class AutoModCog(commands.Cog):
                         pass
                     return
 
-        # Anti-mention spam
         if settings.get("anti_mentions"):
             mention_limit = settings.get("mention_limit", 5)
             if len(message.mentions) >= mention_limit:
@@ -140,9 +138,9 @@ class AutoModCog(commands.Cog):
                 except Exception:
                     pass
                 await self.punish(message.author, "AutoMod: Mention spam detected.", settings)
+                logger.info(f"Anti-mention triggered for {message.author.id} in {message.guild.id}")
                 return
 
-        # Anti-spam + slowmode
         if settings.get("anti_spam") or settings.get("anti_spam_slowmode"):
             user_id = message.author.id
             now = time.time()
@@ -153,7 +151,6 @@ class AutoModCog(commands.Cog):
             self.spam_cache[user_id] = [t for t in self.spam_cache[user_id] if now - t <= spam_seconds]
             spam_messages = settings.get("spam_messages", 5)
             if len(self.spam_cache[user_id]) >= spam_messages:
-                # Spam detected
                 try:
                     await message.channel.purge(limit=10, check=lambda m: m.author.id == user_id)
                 except Exception:
@@ -166,12 +163,11 @@ class AutoModCog(commands.Cog):
                     pass
                 if settings.get("anti_spam"):
                     await self.punish(message.author, "AutoMod: Spam detected.", settings)
-                # Slowmode activation
                 if settings.get("anti_spam_slowmode"):
                     duration = settings.get("slowmode_duration", 5)
                     await self.enable_slowmode(message.channel, duration, message.guild.id)
+                logger.info(f"Spam detected for {message.author.id} in {message.guild.id}")
 
-    # ---------- Commands ----------
     @commands.hybrid_group(name="automod", invoke_without_command=True)
     async def automod(self, ctx):
         await ctx.send("**Available AutoMod Commands**\n\n`!automod links true/false`\n`!automod spam true/false`\n`!automod mentions true/false`\n`!automod slowmode true/false`\n`!allowads`\n`!removeads`")
@@ -183,6 +179,7 @@ class AutoModCog(commands.Cog):
         db_cog = self.bot.get_cog("DatabaseCog")
         await db_cog.automod.update_one({"_id": str(ctx.guild.id)}, {"$set": {"anti_links": enabled}}, upsert=True)
         await ctx.send(f"✅ Anti-links set to `{enabled}`")
+        logger.info(f"Anti-links set to {enabled} in {ctx.guild.id} by {ctx.author.id}")
 
     @automod.command(name="spam")
     async def automod_spam(self, ctx, enabled: bool):
