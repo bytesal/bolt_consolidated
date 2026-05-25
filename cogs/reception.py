@@ -15,8 +15,10 @@ class ReceptionCog(commands.Cog):
         return cfg
 
     @app_commands.command(name="setwelcome", description="Set the welcome message for the linked public server.")
-    @app_commands.describe(target_channel="The channel where welcome messages will be sent.",
-                           welcome_message="Welcome message text. Use {user} and {server} as placeholders.")
+    @app_commands.describe(
+        target_channel="The channel where welcome messages will be sent.",
+        welcome_message="Welcome message text. Use {user} and {server} as placeholders."
+    )
     async def set_welcome_config(self, interaction: discord.Interaction, target_channel: discord.TextChannel, welcome_message: str):
         if not interaction.user.guild_permissions.administrator and interaction.user.id not in self.bot.DEVELOPER_IDS:
             return await interaction.response.send_message("❌ Administrator permission required.", ephemeral=True)
@@ -34,8 +36,10 @@ class ReceptionCog(commands.Cog):
         await interaction.response.send_message(f"✅ Welcome messages will be sent to {target_channel.mention}.")
 
     @app_commands.command(name="setleave", description="Set the leave message for the linked public server.")
-    @app_commands.describe(target_channel="The channel where leave messages will be sent.",
-                           leave_message="Leave message text. Use {user} and {server} as placeholders.")
+    @app_commands.describe(
+        target_channel="The channel where leave messages will be sent.",
+        leave_message="Leave message text. Use {user} and {server} as placeholders."
+    )
     async def set_leave_config(self, interaction: discord.Interaction, target_channel: discord.TextChannel, leave_message: str):
         if not interaction.user.guild_permissions.administrator and interaction.user.id not in self.bot.DEVELOPER_IDS:
             return await interaction.response.send_message("❌ Administrator permission required.", ephemeral=True)
