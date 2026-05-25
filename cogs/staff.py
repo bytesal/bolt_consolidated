@@ -107,7 +107,6 @@ class StaffCog(commands.Cog):
     @app_commands.command(name="poststaffpanel", description="Post the public staff panel.")
     @app_commands.default_permissions(administrator=True)
     async def post_staff_panel(self, interaction: discord.Interaction):
-        # Defer immediately to prevent timeout
         await interaction.response.defer(ephemeral=True)
         db_cog = self.bot.get_cog("DatabaseCog")
         teams = await db_cog.staff_teams.find({"guild_id": str(interaction.guild.id)}).to_list(None)
