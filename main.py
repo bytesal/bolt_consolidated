@@ -3,6 +3,7 @@ import sys
 import asyncio
 import signal
 import threading
+import traceback
 from flask import Flask
 from werkzeug.serving import make_server
 from discord.ext import commands
@@ -45,7 +46,6 @@ def home():
 
 @flask_app.route("/health")
 def health():
-    # Optional: check database connectivity
     return "OK", 200
 
 def run_flask():
@@ -87,6 +87,8 @@ class BoltBot(commands.Bot):
 
     async def setup_hook(self):
         logger.info("setup_hook started.")
+
+        # Load cogs with full error logging
         cogs_dir = os.path.join(BASE_DIR, "cogs")
         if os.path.exists(cogs_dir):
             for filename in sorted(os.listdir(cogs_dir)):
@@ -97,8 +99,12 @@ class BoltBot(commands.Bot):
                         logger.info(f"Loaded cog: cogs.{cog_name}")
                     except Exception as e:
                         logger.error(f"Failed to load cog cogs.{cog_name}: {e}")
+                        logger.error(traceback.format_exc())
 
+        # Register static persistent views
         self._add_static_views()
+
+        # Restore dynamic database‑backed views
         db_cog = self.get_cog("DatabaseCog")
         if db_cog and hasattr(db_cog, "restore_persistent_views"):
             try:
@@ -106,6 +112,8 @@ class BoltBot(commands.Bot):
                 logger.info("Persistent views restored.")
             except Exception as e:
                 logger.error(f"Persistent view restoration failed: {e}")
+
+        # Ensure database indexes
         if db_cog and hasattr(db_cog, "ensure_indexes"):
             try:
                 await db_cog.ensure_indexes()
@@ -113,16 +121,20 @@ class BoltBot(commands.Bot):
             except Exception as e:
                 logger.error(f"Index creation failed: {e}")
 
+        # Sync slash commands
         await self._sync_commands()
+
         logger.info("setup_hook completed.")
 
     def _add_static_views(self):
+        """Add views that do not depend on database data."""
         try:
             from cogs.help import HelpView
             self.add_view(HelpView())
             logger.info("HelpView registered.")
         except Exception as e:
             logger.error(f"HelpView registration failed: {e}")
+
         try:
             from cogs.modmail import TicketCategoryView, OpenTicketButton
             self.add_view(TicketCategoryView(self))
@@ -132,14 +144,17 @@ class BoltBot(commands.Bot):
             logger.error(f"Modmail views registration failed: {e}")
 
     async def _sync_commands(self):
+        """Sync commands to guilds and globally."""
         if STAFF_GUILD_ID != 0 and STAFF_GUILD:
             self.tree.copy_global_to(guild=STAFF_GUILD)
             synced = await self.tree.sync(guild=STAFF_GUILD)
             logger.info(f"Synced {len(synced)} staff guild commands.")
+
         if MAIN_GUILD_ID != 0 and MAIN_GUILD:
             self.tree.copy_global_to(guild=MAIN_GUILD)
             synced = await self.tree.sync(guild=MAIN_GUILD)
             logger.info(f"Synced {len(synced)} main guild commands.")
+
         synced = await self.tree.sync()
         logger.info(f"Synced {len(synced)} global commands.")
 
@@ -147,12 +162,18 @@ class BoltBot(commands.Bot):
         if not self._ready_flag:
             self._ready_flag = True
             logger.info(f"Logged in as: {self.user.name} ({self.user.id})")
+            logger.info("System architecture loaded cleanly.")
+
         guild_count = len(self.guilds)
         activity_text = f"over {guild_count} servers | Bolt Engine"
         await self.change_presence(
             status=discord.Status.online,
-            activity=discord.Activity(type=discord.ActivityType.watching, name=activity_text)
+            activity=discord.Activity(
+                type=discord.ActivityType.watching,
+                name=activity_text
+            )
         )
+
         if self._ready_flag:
             logger.info("Bolt Engine fully operational.")
 
@@ -168,11 +189,14 @@ class BoltBot(commands.Bot):
 intents = discord.Intents.all()
 bot = BoltBot(command_prefix=get_prefix, intents=intents, help_command=None)
 
-bot.DEVELOPER_IDS = [
-    int(dev_id.strip())
-    for dev_id in os.getenv("DEVELOPER_IDS", "").split(",")
-    if dev_id.strip().isdigit()
-]
+# Load developer IDs from environment
+bot.DEVELOPER_IDS = []
+dev_ids_str = os.getenv("DEVELOPER_IDS", "")
+if dev_ids_str:
+    for dev_id in dev_ids_str.split(","):
+        dev_id = dev_id.strip()
+        if dev_id.isdigit():
+            bot.DEVELOPER_IDS.append(int(dev_id))
 logger.info(f"Loaded {len(bot.DEVELOPER_IDS)} developer IDs.")
 
 @bot.check
@@ -180,8 +204,8 @@ async def global_blacklist_check(ctx):
     if ctx.author.id in bot.DEVELOPER_IDS:
         return True
     db_cog = bot.get_cog("DatabaseCog")
-    if not db_cog:
-        return True
+    if not db_cog or not db_cog.db:
+        return True  # If database not connected, allow commands (but features may fail)
     user_blacklist = await db_cog.blacklist.find_one({"_id": str(ctx.author.id), "type": "user"})
     if user_blacklist:
         return False
@@ -203,6 +227,8 @@ async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandOnCooldown):
         await ctx.send(f"⏳ Command on cooldown. Try again in {error.retry_after:.1f} seconds.", ephemeral=True)
         return
+    # Log other errors
+    logger.error(f"Unhandled command error: {error}")
     raise error
 
 # ------------------------------------------------------------
@@ -222,6 +248,7 @@ async def main():
     start_flask()
     token = os.getenv("BOT_TOKEN") or os.getenv("DISCORD_TOKEN")
     if not token:
+        logger.critical("CRITICAL ERROR: No bot token found.")
         raise ValueError("CRITICAL ERROR: No bot token found.")
     async with bot:
         await bot.start(token)
