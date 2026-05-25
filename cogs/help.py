@@ -178,7 +178,6 @@ class HelpDropdown(discord.ui.Select):
             color=discord.Color.blurple(),
             timestamp=datetime.utcnow()
         )
-        # Split commands into chunks of 10 to avoid field limits
         chunks = [commands_list[i:i+10] for i in range(0, len(commands_list), 10)]
         for i, chunk in enumerate(chunks):
             embed.add_field(
@@ -212,7 +211,6 @@ class HelpCog(commands.Cog):
         await interaction.followup.send(embed=embed, view=HelpView(), ephemeral=False)
 
     def _build_main_embed(self, interaction: discord.Interaction) -> discord.Embed:
-        # Create a clean, modern main embed
         embed = discord.Embed(
             title="⚙️ **Bolt Engine Help Center**",
             description=(
@@ -223,7 +221,7 @@ class HelpCog(commands.Cog):
             color=discord.Color.blurple(),
             timestamp=datetime.utcnow()
         )
-        # Categories as a clean inline field (4 per row emojis)
+        # Categories as a clean inline field
         categories_text = ""
         for cat in COMMANDS_BY_CATEGORY.keys():
             emoji = DEFAULT_EMOJIS.get(cat, "📌")
@@ -242,12 +240,6 @@ class HelpCog(commands.Cog):
         )
         embed.add_field(name="✨ **Key Features**", value=features, inline=True)
 
-        # Tip or info field
-        embed.add_field(
-            name="💡 **Tip**",
-            value="Use `/sync` to update slash commands after bot updates.\nNeed help? Join our [Support Server](https://discord.gg/invite) (replace with actual invite).",
-            inline=False
-        )
         embed.set_thumbnail(url=interaction.client.user.display_avatar.url)
         embed.set_footer(
             text=f"Requested by {interaction.user.display_name} • Bolt Engine v5.0",
