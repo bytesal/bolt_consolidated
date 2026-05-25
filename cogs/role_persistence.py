@@ -1,257 +1,122 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
+from datetime import datetime
+from utils.logger import get_logger
+
+logger = get_logger("role_persistence")
 
 
-class HelpDropdown(discord.ui.Select):
-    def __init__(self):
-        options = [
-            discord.SelectOption(label="Moderation", emoji="🛡️", description="Moderation and punishment commands."),
-            discord.SelectOption(label="Ad-Warn", emoji="⚠️", description="Advertising warning system & quota tracking."),
-            discord.SelectOption(label="Modmail", emoji="📩", description="Support and ticket system commands."),
-            discord.SelectOption(label="Reception", emoji="🎉", description="Welcome, leave, and onboarding systems."),
-            discord.SelectOption(label="Applications", emoji="📄", description="Applications and recruitment system."),
-            discord.SelectOption(label="Leveling", emoji="📈", description="XP and leveling commands."),
-            discord.SelectOption(label="Utility", emoji="⚙️", description="Utility and management commands."),
-            discord.SelectOption(label="Staff", emoji="👥", description="Staff department and quota commands."),
-            discord.SelectOption(label="Staff Teams", emoji="📂", description="Dynamic staff department system."),
-            discord.SelectOption(label="AutoMod", emoji="🤖", description="Automatic moderation system."),
-            discord.SelectOption(label="Analytics", emoji="📊", description="Statistics and analytics commands."),
-            discord.SelectOption(label="Server Linking", emoji="🔗", description="Cross-server management commands."),
-            discord.SelectOption(label="Developer", emoji="🧑‍💻", description="Developer-only commands."),
-        ]
-        super().__init__(placeholder="Select a command category...", min_values=1, max_values=1,
-                         options=options, custom_id="help_menu_dropdown")
-
-    async def callback(self, interaction: discord.Interaction):
-        category = self.values[0]
-        embed = discord.Embed(color=discord.Color.blurple())
-
-        if category == "Moderation":
-            embed.title = "🛡️ Moderation Commands"
-            embed.description = "Cross-server moderation commands used by staff members."
-            embed.add_field(name="Available Commands", value="\n".join([
-                "`/warn` → Warn a member (expires after set days).",
-                "`/removewarn` → Remove a specific warning by case ID.",
-                "`/warns` → List active warnings for a user.",
-                "`/setwarnexpiry` → Set days until warnings expire (0 = never).",
-                "`/casenote` → Add a private note to a case.",
-                "`/caseview` → View a case with all notes.",
-                "`/timeout` → Timeout a member.",
-                "`/kick` → Kick a member.",
-                "`/ban` → Ban a member.",
-                "`/history` → View moderation history.",
-                "`/setmodlog` → Configure moderation logs.",
-                "`/purge` → Delete messages.",
-                "`/purgeuser` → Delete messages from a user.",
-            ]), inline=False)
-
-        elif category == "Ad-Warn":
-            embed.title = "⚠️ Ad‑Warn System"
-            embed.description = "Issue advertising warnings and track weekly staff quotas."
-            embed.add_field(name="Available Commands", value="\n".join([
-                "`/adwarn` → Issue an advertising warning (counts toward weekly quota).",
-                "`/adwarnhistory` → View ad‑warn history for a user.",
-            ]), inline=False)
-
-        elif category == "Modmail":
-            embed.title = "📩 Modmail Commands"
-            embed.description = "Professional support ticket system with anonymous replies, transcripts, and claim locking."
-            embed.add_field(name="Available Commands", value="\n".join([
-                "`/setupmodmail` → Configure modmail category and transcript channel.",
-                "`/panel` → Send modmail panel.",
-                "`DM the bot` → Create a support ticket.",
-                "`Claim Button` → Claim a ticket (prevents others from replying).",
-                "`Unclaim Button` → Release a claimed ticket.",
-                "`Close Button` → Close a ticket (saves transcript).",
-            ]), inline=False)
-
-        elif category == "Reception":
-            embed.title = "🎉 Reception Commands"
-            embed.description = "Welcome, leave, and onboarding systems."
-            embed.add_field(name="Available Commands", value="\n".join([
-                "`/setwelcome` → Configure welcome messages.",
-                "`/setleave` → Configure leave messages.",
-                "`/togglewelcome` → Enable or disable welcome messages.",
-                "`/toggleleave` → Enable or disable leave messages.",
-                "`/setautorole` → Configure autoroles.",
-                "`/setruleschannel` → Configure rules channel.",
-            ]), inline=False)
-
-        elif category == "Applications":
-            embed.title = "📄 Application Commands"
-            embed.description = "Applications and recruitment system."
-            embed.add_field(name="Available Commands", value="\n".join([
-                "`/sethrchannel` → Set HR log channel.",
-                "`/deployappform` → Deploy application form.",
-                "`/hrlogs` → View HR decision logs.",
-            ]), inline=False)
-
-        elif category == "Leveling":
-            embed.title = "📈 Leveling Commands"
-            embed.description = "XP and ranking system commands."
-            embed.add_field(name="Available Commands", value="\n".join([
-                "`/rank` → View user rank.",
-                "`/leaderboard` → View XP leaderboard.",
-                "`/setlevelchannel` → Configure level‑up channel.",
-                "`/setxprate` → Configure XP gain rate.",
-            ]), inline=False)
-
-        elif category == "Utility":
-            embed.title = "⚙️ Utility Commands"
-            embed.description = "General utility and management commands."
-            embed.add_field(name="Available Commands", value="\n".join([
-                "`/sticky` → Create sticky messages.",
-                "`/unsticky` → Remove sticky messages.",
-                "`/ping` → View bot latency.",
-                "`/serverinfo` → View server information.",
-                "`/addreactrole` → Add a reaction role to a message.",
-                "`/removereactrole` → Remove a reaction role.",
-                "`/restoreroles` → Manually restore roles from backup.",
-            ]), inline=False)
-
-        elif category == "Staff":
-            embed.title = "👥 Staff Commands"
-            embed.description = "Department assignment, quota tracking, and audit logs."
-            embed.add_field(name="Available Commands", value="\n".join([
-                "`/setdepartment` → Assign a staff member to a department.",
-                "`/removedepartment` → Remove a staff member from their department.",
-                "`/listdepartments` → List all staff members and their departments.",
-                "`/addrank` → Create a staff rank.",
-                "`/addduty` → Add duties to a rank.",
-                "`/poststaffdropdown` → Post the ranks dropdown.",
-                "`/deployquotamatrix` → Deploy shift/quota dashboard.",
-                "`/setauditchannel` → Set the channel for audit log notifications.",
-                "`/auditlog` → View recent audit log entries.",
-            ]), inline=False)
-
-        elif category == "Staff Teams":
-            embed.title = "📂 Staff Team Commands"
-            embed.description = "Dynamic staff department system."
-            embed.add_field(name="Available Commands", value="\n".join([
-                "`/createteam` → Create a staff team.",
-                "`/addmember` → Add a member to a team.",
-                "`/removemember` → Remove a member from a team.",
-                "`/addresponsibility` → Add responsibilities to a team.",
-                "`/poststaffpanel` → Deploy the public staff panel.",
-            ]), inline=False)
-
-        elif category == "AutoMod":
-            embed.title = "🤖 AutoMod Commands"
-            embed.description = "Automatic moderation configuration, including slowmode on spam."
-            embed.add_field(name="Available Commands", value="\n".join([
-                "`!automod links true/false` → Toggle anti‑links.",
-                "`!automod spam true/false` → Toggle anti‑spam (punishment).",
-                "`!automod mentions true/false` → Toggle mention protection.",
-                "`!automod slowmode true/false` → Toggle auto‑slowmode on spam.",
-                "`!allowads` → Allow advertisements in channel.",
-                "`!removeads` → Remove advertisement permissions.",
-            ]), inline=False)
-
-        elif category == "Analytics":
-            embed.title = "📊 Analytics Commands"
-            embed.description = "Bot statistics and analytics."
-            embed.add_field(name="Available Commands", value="\n".join([
-                "`/dashboard` → View analytics dashboard.",
-                "`/botstats` → View detailed bot statistics.",
-            ]), inline=False)
-
-        elif category == "Server Linking":
-            embed.title = "🔗 Server Linking Commands"
-            embed.description = "Cross‑server infrastructure management."
-            embed.add_field(name="Available Commands", value="\n".join([
-                "`/linkserver` → Link staff and public servers.",
-                "`/setmainserver` → Set main community server.",
-                "`/setstaffserver` → Set staff control server.",
-                "`/viewconfig` → View current configuration.",
-                "`/resetconfig` → Reset bot configuration.",
-            ]), inline=False)
-
-        elif category == "Developer":
-            if interaction.user.id not in interaction.client.DEVELOPER_IDS:
-                embed.title = "🔒 Restricted Category"
-                embed.description = "You do not have permission to access developer commands."
-                embed.color = discord.Color.red()
-                embed.set_footer(text="Developer Access Required")
-                return await interaction.response.edit_message(embed=embed, view=self.view)
-
-            embed.title = "🧑‍💻 Developer Commands"
-            embed.description = "Developer‑only management commands."
-            embed.add_field(name="Available Commands", value="\n".join([
-                "`/sync` → Sync application commands.",
-                "`/reload` → Reload a cog.",
-                "`/load` → Load a cog.",
-                "`/unload` → Unload a cog.",
-                "`/shutdown` → Shutdown the bot.",
-                "`/restart` → Restart the bot (Railway‑safe).",
-                "`/eval` → Execute Python code.",
-                "`/devpanel` → Open developer panel.",
-                "`/blacklistuser` → Blacklist a user globally.",
-                "`/unblacklistuser` → Remove user blacklist.",
-                "`/blacklistguild` → Blacklist a guild globally.",
-                "`/unblacklistguild` → Remove guild blacklist.",
-            ]), inline=False)
-
-        embed.set_footer(text=f"Requested by {interaction.user}", icon_url=interaction.user.display_avatar.url)
-        embed.timestamp = discord.utils.utcnow()
-        await interaction.response.edit_message(embed=embed, view=self.view)
-
-
-class HelpView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(HelpDropdown())
-
-
-class HelpCog(commands.Cog):
+class RolePersistenceCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="help", description="View all available bot commands.")
-    async def help_command(self, interaction: discord.Interaction):
-        embed = discord.Embed(
-            title="🤖 Bolt Engine Help Center",
-            description="Welcome to the interactive help system.\n\nUse the dropdown menu below to browse all command categories.",
-            color=discord.Color.blurple()
+    @commands.Cog.listener()
+    async def on_member_remove(self, member: discord.Member):
+        """Store member's roles when they leave (excluding temporary roles)."""
+        if member.bot:
+            return
+        db_cog = self.bot.get_cog("DatabaseCog")
+        if not db_cog:
+            return
+
+        # Exclude @everyone and roles that are likely temporary (configurable)
+        exclude_role_names = ["Muted", "Guest", "Temp", "Verification"]
+        role_ids = [role.id for role in member.roles
+                    if role != member.guild.default_role
+                    and role.name not in exclude_role_names
+                    and not role.is_premium_subscriber()]  # exclude boost role
+
+        if not role_ids:
+            return
+
+        backup = {
+            "user_id": str(member.id),
+            "guild_id": str(member.guild.id),
+            "roles": role_ids,
+            "created_at": datetime.utcnow()
+        }
+        await db_cog.role_backup.update_one(
+            {"user_id": str(member.id), "guild_id": str(member.guild.id)},
+            {"$set": backup},
+            upsert=True
         )
-        embed.add_field(
-            name="📚 Command Categories",
-            value=(
-                "🛡️ Moderation\n"
-                "⚠️ Ad‑Warn\n"
-                "📩 Modmail\n"
-                "🎉 Reception\n"
-                "📄 Applications\n"
-                "📈 Leveling\n"
-                "⚙️ Utility\n"
-                "👥 Staff\n"
-                "📂 Staff Teams\n"
-                "🤖 AutoMod\n"
-                "📊 Analytics\n"
-                "🔗 Server Linking\n"
-                "🧑‍💻 Developer"
-            ),
-            inline=False
-        )
-        embed.add_field(
-            name="✨ Features",
-            value=(
-                "• Cross‑Server Moderation\n"
-                "• Ad‑Warn Quota System\n"
-                "• Persistent Systems\n"
-                "• Professional Modmail\n"
-                "• Dynamic Staff Teams\n"
-                "• Advanced AutoMod"
-            ),
-            inline=False
-        )
-        if interaction.guild and interaction.guild.icon:
-            embed.set_thumbnail(url=interaction.guild.icon.url)
-        embed.set_footer(text=interaction.guild.name if interaction.guild else "Bolt Engine",
-                         icon_url=interaction.guild.icon.url if interaction.guild and interaction.guild.icon else None)
-        embed.timestamp = discord.utils.utcnow()
-        await interaction.response.send_message(embed=embed, view=HelpView(), ephemeral=False)
+        logger.info(f"Stored role backup for user {member.id} in guild {member.guild.id}")
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member):
+        """Restore roles when a member rejoins."""
+        if member.bot:
+            return
+        db_cog = self.bot.get_cog("DatabaseCog")
+        if not db_cog:
+            return
+
+        backup = await db_cog.role_backup.find_one({
+            "user_id": str(member.id),
+            "guild_id": str(member.guild.id)
+        })
+        if not backup:
+            return
+
+        role_ids = backup.get("roles", [])
+        roles_to_restore = []
+        for role_id in role_ids:
+            role = member.guild.get_role(role_id)
+            if role and role < member.guild.me.top_role:  # bot must be able to assign
+                roles_to_restore.append(role)
+
+        if roles_to_restore:
+            try:
+                await member.add_roles(*roles_to_restore, reason="Role persistence on rejoin")
+                logger.info(f"Restored {len(roles_to_restore)} roles for {member.id} in {member.guild.id}")
+            except discord.Forbidden:
+                logger.warning(f"Missing permissions to restore roles for {member.id}")
+            except Exception as e:
+                logger.error(f"Failed to restore roles for {member.id}: {e}")
+
+        # Delete backup after restoration
+        await db_cog.role_backup.delete_one({
+            "user_id": str(member.id),
+            "guild_id": str(member.guild.id)
+        })
+
+    @app_commands.command(name="restoreroles", description="Manually restore roles for a user (if automatic failed).")
+    @app_commands.default_permissions(manage_roles=True)
+    async def restore_roles_command(self, interaction: discord.Interaction, user: discord.User):
+        await interaction.response.defer(ephemeral=True)
+        db_cog = self.bot.get_cog("DatabaseCog")
+        if not db_cog:
+            return await interaction.followup.send("❌ Database error.", ephemeral=True)
+
+        backup = await db_cog.role_backup.find_one({
+            "user_id": str(user.id),
+            "guild_id": str(interaction.guild.id)
+        })
+        if not backup:
+            return await interaction.followup.send("❌ No role backup found for this user.", ephemeral=True)
+
+        member = interaction.guild.get_member(user.id)
+        if not member:
+            return await interaction.followup.send("❌ User is not in this server.", ephemeral=True)
+
+        role_ids = backup.get("roles", [])
+        roles_to_restore = []
+        for role_id in role_ids:
+            role = interaction.guild.get_role(role_id)
+            if role and role < interaction.guild.me.top_role:
+                roles_to_restore.append(role)
+
+        if not roles_to_restore:
+            return await interaction.followup.send("❌ No valid roles to restore (maybe they were deleted or are higher than bot).", ephemeral=True)
+
+        try:
+            await member.add_roles(*roles_to_restore, reason="Manual role restoration")
+            await db_cog.role_backup.delete_one({"_id": backup["_id"]})
+            await interaction.followup.send(f"✅ Restored {len(roles_to_restore)} roles for {user.mention}")
+        except Exception as e:
+            await interaction.followup.send(f"❌ Failed: {e}", ephemeral=True)
 
 
 async def setup(bot):
-    await bot.add_cog(HelpCog(bot))
+    await bot.add_cog(RolePersistenceCog(bot))
