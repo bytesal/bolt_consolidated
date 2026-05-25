@@ -171,7 +171,6 @@ class ModmailCog(commands.Cog):
         except Exception:
             pass
 
-    # DM Relay System
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.author.bot:
@@ -196,14 +195,12 @@ class ModmailCog(commands.Cog):
                 if message.attachments:
                     embed.add_field(name="Attachments", value="\n".join(a.url for a in message.attachments), inline=False)
                 await channel.send(embed=embed)
-                # React with ✅ to user's message to confirm receipt
                 try:
                     await message.add_reaction("✅")
                 except Exception:
                     pass
                 return
 
-            # Cooldown for new tickets
             now = datetime.utcnow().timestamp()
             if message.author.id in self.cooldowns and (now - self.cooldowns[message.author.id]) < TICKET_COOLDOWN:
                 return await message.author.send("⏳ Please wait before opening another ticket.")
@@ -219,12 +216,10 @@ class ModmailCog(commands.Cog):
             try:
                 user = await self.bot.fetch_user(int(ticket["user_id"]))
                 embed = discord.Embed(description=message.content, color=discord.Color.gold(), timestamp=datetime.utcnow())
-                # Anonymize: Use "Management Team" and bot's default avatar
                 embed.set_author(name="Management Team", icon_url=self.bot.user.display_avatar.url)
                 if message.attachments:
                     embed.add_field(name="Attachments", value="\n".join(a.url for a in message.attachments), inline=False)
                 await user.send(embed=embed)
-                # Add a reaction to the staff message to confirm delivery
                 try:
                     await message.add_reaction("✅")
                 except Exception:
