@@ -80,7 +80,7 @@ class BoltBot(commands.Bot):
     async def setup_hook(self):
         logger.info("setup_hook started.")
 
-        # Load cogs
+        # Load cogs with full error logging
         cogs_dir = os.path.join(BASE_DIR, "cogs")
         if os.path.exists(cogs_dir):
             for filename in sorted(os.listdir(cogs_dir)):
@@ -112,15 +112,12 @@ class BoltBot(commands.Bot):
                 except Exception as e:
                     logger.error(f"Index creation failed: {e}")
 
-        # --- DUPLICATE COMMAND FIX ---
-        # Clear ALL commands from staff/main guilds (if configured)
-        # This removes any leftover guild‑specific commands that cause duplicates.
+        # Clear old guild commands (fix duplicates)
         await self._clear_guild_commands()
 
-        # Sync only global commands (no per‑guild sync)
+        # Sync global commands
         synced = await self.tree.sync()
         logger.info(f"Synced {len(synced)} global commands.")
-        # -----------------------------
 
         logger.info("setup_hook completed.")
 
@@ -140,20 +137,15 @@ class BoltBot(commands.Bot):
             logger.error(f"Modmail views registration failed: {e}")
 
     async def _clear_guild_commands(self):
-        """Clear commands from staff/main guilds (if IDs are provided)."""
+        """Clear commands from staff/main guilds if configured."""
         guilds_to_clear = []
         if STAFF_GUILD:
             guilds_to_clear.append(STAFF_GUILD)
         if MAIN_GUILD and MAIN_GUILD.id != STAFF_GUILD_ID:
             guilds_to_clear.append(MAIN_GUILD)
 
-        if not guilds_to_clear:
-            logger.info("No guild IDs configured for clearing; skipping.")
-            return
-
         for guild in guilds_to_clear:
             try:
-                # Sync an empty list to the guild – this removes all guild commands
                 await self.tree.sync(guild=guild, commands=[])
                 logger.info(f"Cleared commands from guild {guild.id}")
             except Exception as e:
@@ -218,27 +210,60 @@ async def global_blacklist_check(ctx):
             return False
     return True
 
+# ============================================================
+# GLOBAL INTERACTION ERROR HANDLER – THIS IS CRITICAL
+# ============================================================
 @bot.event
 async def on_command_error(ctx, error):
+    """Handle prefix command errors."""
     if isinstance(error, commands.CommandNotFound):
         return
     if isinstance(error, commands.CommandOnCooldown):
         await ctx.send(f"⏳ Command on cooldown. Try again in {error.retry_after:.1f} seconds.", ephemeral=True)
         return
-    logger.error(f"Unhandled command error: {error}")
+    logger.error(f"Unhandled prefix command error: {error}")
     logger.error(traceback.format_exc())
     await ctx.send("❌ An unexpected error occurred. The developers have been notified.", ephemeral=True)
 
 @bot.event
-async def on_application_command_error(interaction, error):
-    logger.error(f"Application command error: {error}")
+async def on_application_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
+    """Handle ALL slash command errors – prevents timeouts."""
+    logger.error(f"Slash command error: {error}")
+    logger.error(traceback.format_exc())
+    
+    # Try to send an error response if the interaction hasn't been responded to
+    try:
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                "❌ An error occurred while executing this command. Please try again later.",
+                ephemeral=True
+            )
+        else:
+            await interaction.followup.send(
+                "❌ An error occurred while executing this command. Please try again later.",
+                ephemeral=True
+            )
+    except Exception as e:
+        logger.error(f"Failed to send error response: {e}")
+
+# Also catch any unhandled exceptions in the command tree
+@bot.tree.error
+async def on_tree_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
+    """Catch errors from the command tree."""
+    logger.error(f"Tree command error: {error}")
     logger.error(traceback.format_exc())
     try:
         if not interaction.response.is_done():
-            await interaction.response.send_message("❌ An error occurred while executing this command.", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ An error occurred. Please report this to the bot developer.",
+                ephemeral=True
+            )
         else:
-            await interaction.followup.send("❌ An error occurred.", ephemeral=True)
-    except:
+            await interaction.followup.send(
+                "❌ An error occurred. Please report this to the bot developer.",
+                ephemeral=True
+            )
+    except Exception:
         pass
 
 # ------------------------------------------------------------
