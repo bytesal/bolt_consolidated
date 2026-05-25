@@ -13,8 +13,6 @@ from dotenv import load_dotenv
 from utils.logger import setup_logging, get_logger
 
 # ------------------------------------------------------------
-# Base Directory & Environment
-# ------------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
 load_dotenv()
@@ -22,9 +20,6 @@ load_dotenv()
 setup_logging(os.getenv("LOG_WEBHOOK_URL"))
 logger = get_logger("main")
 
-# ------------------------------------------------------------
-# Guild Configuration (only used for presence, not for sync)
-# ------------------------------------------------------------
 MAIN_GUILD_ID = int(os.getenv("MAIN_GUILD_ID", "0"))
 STAFF_GUILD_ID = int(os.getenv("STAFF_GUILD_ID", "0"))
 
@@ -32,7 +27,7 @@ MAIN_GUILD = discord.Object(id=MAIN_GUILD_ID) if MAIN_GUILD_ID else None
 STAFF_GUILD = discord.Object(id=STAFF_GUILD_ID) if STAFF_GUILD_ID else None
 
 # ------------------------------------------------------------
-# Flask Keep‑Alive
+# Flask keep‑alive (unchanged)
 # ------------------------------------------------------------
 flask_app = Flask("")
 flask_thread = None
@@ -60,7 +55,7 @@ def stop_flask():
     logger.info("Flask server stopping...")
 
 # ------------------------------------------------------------
-# Dynamic Prefix Resolver
+# Prefix resolver (unchanged)
 # ------------------------------------------------------------
 async def get_prefix(bot, message):
     if message.author.id in bot.DEVELOPER_IDS:
@@ -75,18 +70,17 @@ async def get_prefix(bot, message):
     return "!"
 
 # ------------------------------------------------------------
-# Bot Class Definition
+# Bot class
 # ------------------------------------------------------------
 class BoltBot(commands.Bot):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._ready_flag = False
-        self._cleared_guild_commands = False
 
     async def setup_hook(self):
         logger.info("setup_hook started.")
 
-        # Load cogs
+        # Load cogs with error logging
         cogs_dir = os.path.join(BASE_DIR, "cogs")
         if os.path.exists(cogs_dir):
             for filename in sorted(os.listdir(cogs_dir)):
@@ -102,7 +96,7 @@ class BoltBot(commands.Bot):
         # Static views
         self._add_static_views()
 
-        # Database views and indexes
+        # Database restoration and indexes
         db_cog = self.get_cog("DatabaseCog")
         if db_cog:
             if hasattr(db_cog, "restore_persistent_views"):
@@ -118,8 +112,9 @@ class BoltBot(commands.Bot):
                 except Exception as e:
                     logger.error(f"Index creation failed: {e}")
 
-        # Sync commands – FIX: only global sync, no per‑guild sync
-        await self._sync_commands_fixed()
+        # Sync commands: only global, no per‑guild sync (fixes duplicates without clearing)
+        synced = await self.tree.sync()
+        logger.info(f"Synced {len(synced)} global commands.")
 
         logger.info("setup_hook completed.")
 
@@ -138,33 +133,6 @@ class BoltBot(commands.Bot):
         except Exception as e:
             logger.error(f"Modmail views registration failed: {e}")
 
-    async def _sync_commands_fixed(self):
-        """Sync only globally. Optionally clear old guild commands once."""
-        db_cog = self.get_cog("DatabaseCog")
-        if db_cog and not self._cleared_guild_commands:
-            # Check if we already cleared guild commands (store flag in DB)
-            cleared_flag = await db_cog.settings.find_one({"_id": "guild_commands_cleared"})
-            if not cleared_flag:
-                logger.info("Clearing existing guild commands from staff/main guilds...")
-                # Clear commands from staff guild if configured
-                if STAFF_GUILD:
-                    await self.tree.sync(guild=STAFF_GUILD, commands=[])
-                    logger.info(f"Cleared commands from staff guild {STAFF_GUILD.id}")
-                if MAIN_GUILD and MAIN_GUILD != STAFF_GUILD:
-                    await self.tree.sync(guild=MAIN_GUILD, commands=[])
-                    logger.info(f"Cleared commands from main guild {MAIN_GUILD.id}")
-                # Mark as cleared in DB
-                await db_cog.settings.update_one(
-                    {"_id": "guild_commands_cleared"},
-                    {"$set": {"value": True}},
-                    upsert=True
-                )
-                self._cleared_guild_commands = True
-
-        # Global sync only
-        synced = await self.tree.sync()
-        logger.info(f"Synced {len(synced)} global commands.")
-
     async def on_ready(self):
         if not self._ready_flag:
             self._ready_flag = True
@@ -180,7 +148,6 @@ class BoltBot(commands.Bot):
                 name=activity_text
             )
         )
-
         if self._ready_flag:
             logger.info("Bolt Engine fully operational.")
 
@@ -191,7 +158,7 @@ class BoltBot(commands.Bot):
         logger.info("Bot closed.")
 
 # ------------------------------------------------------------
-# Developer IDs & Global Blacklist Check
+# Intents, developer IDs, blacklist
 # ------------------------------------------------------------
 intents = discord.Intents.all()
 bot = BoltBot(command_prefix=get_prefix, intents=intents, help_command=None)
@@ -225,6 +192,7 @@ async def global_blacklist_check(ctx):
             return False
     return True
 
+# Global interaction error handler to catch all failures
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
@@ -233,10 +201,23 @@ async def on_command_error(ctx, error):
         await ctx.send(f"⏳ Command on cooldown. Try again in {error.retry_after:.1f} seconds.", ephemeral=True)
         return
     logger.error(f"Unhandled command error: {error}")
-    raise error
+    logger.error(traceback.format_exc())
+    await ctx.send("❌ An unexpected error occurred. The developers have been notified.", ephemeral=True)
+
+@bot.event
+async def on_application_command_error(interaction, error):
+    logger.error(f"Application command error: {error}")
+    logger.error(traceback.format_exc())
+    try:
+        if not interaction.response.is_done():
+            await interaction.response.send_message("❌ An error occurred while executing this command.", ephemeral=True)
+        else:
+            await interaction.followup.send("❌ An error occurred.", ephemeral=True)
+    except:
+        pass
 
 # ------------------------------------------------------------
-# Signal Handling
+# Signal handling
 # ------------------------------------------------------------
 def handle_shutdown_signal(signum, frame):
     logger.info(f"Received signal {signal.Signals(signum).name}. Shutting down...")
@@ -246,7 +227,7 @@ signal.signal(signal.SIGTERM, handle_shutdown_signal)
 signal.signal(signal.SIGINT, handle_shutdown_signal)
 
 # ------------------------------------------------------------
-# Main Entry Point
+# Main entry
 # ------------------------------------------------------------
 async def main():
     start_flask()
