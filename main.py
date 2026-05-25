@@ -211,7 +211,7 @@ async def global_blacklist_check(ctx):
     return True
 
 # ============================================================
-# GLOBAL INTERACTION ERROR HANDLER – THIS IS CRITICAL
+# GLOBAL INTERACTION ERROR HANDLERS – PREVENTS SILENT FAILURES
 # ============================================================
 @bot.event
 async def on_command_error(ctx, error):
@@ -230,8 +230,6 @@ async def on_application_command_error(interaction: discord.Interaction, error: 
     """Handle ALL slash command errors – prevents timeouts."""
     logger.error(f"Slash command error: {error}")
     logger.error(traceback.format_exc())
-    
-    # Try to send an error response if the interaction hasn't been responded to
     try:
         if not interaction.response.is_done():
             await interaction.response.send_message(
@@ -246,7 +244,6 @@ async def on_application_command_error(interaction: discord.Interaction, error: 
     except Exception as e:
         logger.error(f"Failed to send error response: {e}")
 
-# Also catch any unhandled exceptions in the command tree
 @bot.tree.error
 async def on_tree_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
     """Catch errors from the command tree."""
@@ -267,7 +264,7 @@ async def on_tree_error(interaction: discord.Interaction, error: discord.app_com
         pass
 
 # ------------------------------------------------------------
-# Signal handling
+# Signal handling for graceful shutdown
 # ------------------------------------------------------------
 def handle_shutdown_signal(signum, frame):
     logger.info(f"Received signal {signal.Signals(signum).name}. Shutting down...")
@@ -277,7 +274,7 @@ signal.signal(signal.SIGTERM, handle_shutdown_signal)
 signal.signal(signal.SIGINT, handle_shutdown_signal)
 
 # ------------------------------------------------------------
-# Main entry
+# Main entry point
 # ------------------------------------------------------------
 async def main():
     start_flask()
