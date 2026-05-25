@@ -1,6 +1,9 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
+from utils.logger import get_logger
+
+logger = get_logger("reaction_roles")
 
 
 class ReactionRolesCog(commands.Cog):
@@ -19,18 +22,17 @@ class ReactionRolesCog(commands.Cog):
         db_cog = self.bot.get_cog("DatabaseCog")
         if not db_cog:
             return await interaction.followup.send("❌ Database unavailable.", ephemeral=True)
-        # Store mapping
         await db_cog.reaction_roles.update_one(
             {"message_id": str(msg.id), "guild_id": str(interaction.guild.id)},
             {"$set": {emoji: str(role.id)}},
             upsert=True
         )
-        # Add reaction
         try:
             await msg.add_reaction(emoji)
         except Exception:
             return await interaction.followup.send(f"❌ Could not add reaction `{emoji}`.", ephemeral=True)
         await interaction.followup.send(f"✅ Reaction role added: {emoji} → {role.mention}")
+        logger.info(f"Reaction role added by {interaction.user.id} in {interaction.guild.id}: {emoji} -> {role.id}")
 
     @app_commands.command(name="removereactrole", description="Remove a reaction role from a message.")
     @app_commands.default_permissions(manage_roles=True)
@@ -56,10 +58,7 @@ class ReactionRolesCog(commands.Cog):
         db_cog = self.bot.get_cog("DatabaseCog")
         if not db_cog:
             return
-        doc = await db_cog.reaction_roles.find_one({
-            "message_id": str(payload.message_id),
-            "guild_id": str(payload.guild_id)
-        })
+        doc = await db_cog.reaction_roles.find_one({"message_id": str(payload.message_id), "guild_id": str(payload.guild_id)})
         if not doc:
             return
         emoji_str = str(payload.emoji)
@@ -77,8 +76,8 @@ class ReactionRolesCog(commands.Cog):
             return
         try:
             await member.add_roles(role, reason="Reaction role")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to add reaction role for {payload.user_id}: {e}")
 
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent):
@@ -87,10 +86,7 @@ class ReactionRolesCog(commands.Cog):
         db_cog = self.bot.get_cog("DatabaseCog")
         if not db_cog:
             return
-        doc = await db_cog.reaction_roles.find_one({
-            "message_id": str(payload.message_id),
-            "guild_id": str(payload.guild_id)
-        })
+        doc = await db_cog.reaction_roles.find_one({"message_id": str(payload.message_id), "guild_id": str(payload.guild_id)})
         if not doc:
             return
         emoji_str = str(payload.emoji)
@@ -108,8 +104,8 @@ class ReactionRolesCog(commands.Cog):
             return
         try:
             await member.remove_roles(role, reason="Reaction role removed")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to remove reaction role for {payload.user_id}: {e}")
 
 
 async def setup(bot):
