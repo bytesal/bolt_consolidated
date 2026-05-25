@@ -45,18 +45,18 @@ class ModerationCog(commands.Cog):
         return None, None
 
     async def ensure_staff_server(self, interaction: discord.Interaction) -> bool:
-        """Allow execution in either the staff guild OR the linked public guild."""
-        staff_guild, public_guild = await self.get_linked_servers(interaction.guild.id)
-        if staff_guild is None or public_guild is None:
-            return False
-        # Command allowed if current guild is staff guild OR public guild
-        return interaction.guild.id in (staff_guild.id, public_guild.id)
+        """Allow moderation commands in any server (no forced linked guild check)."""
+        return True
 
     async def get_public_member(self, interaction: discord.Interaction, user_id: int):
+        """Return the member from the linked public guild, or from the current guild if no link."""
         _, public_guild = await self.get_linked_servers(interaction.guild.id)
-        if not public_guild:
-            return None
-        return public_guild.get_member(user_id)
+        if public_guild:
+            member = public_guild.get_member(user_id)
+            if member:
+                return member
+        # Fallback to current guild
+        return interaction.guild.get_member(user_id)
 
     async def generate_case(self) -> str:
         return str(uuid.uuid4())[:8].upper()
@@ -67,7 +67,7 @@ class ModerationCog(commands.Cog):
         case_id = await self.generate_case()
         doc = {
             "case_id": case_id,
-            "guild_id": str(public_guild.id) if public_guild else None,
+            "guild_id": str(public_guild.id) if public_guild else str(interaction.guild.id),
             "action": action,
             "target_id": str(target.id),
             "target_name": target.name,
@@ -129,6 +129,25 @@ class ModerationCog(commands.Cog):
         db_cog = self.bot.get_cog("DatabaseCog")
         staff_guild, _ = await self.get_linked_servers(interaction.guild.id)
         if not staff_guild:
+            # Fallback: use the current guild's configured modlog channel
+            config = await db_cog.settings.find_one({"_id": f"modlog_{interaction.guild.id}"})
+            if config:
+                channel = interaction.guild.get_channel(int(config["value"]))
+                if channel:
+                    embed = discord.Embed(
+                        title=f"🛡️ Moderation Action • {action.upper()}",
+                        color=discord.Color.orange(),
+                        timestamp=datetime.utcnow()
+                    )
+                    embed.add_field(name="User", value=f"{target.mention} (`{target.id}`)", inline=False)
+                    embed.add_field(name="Moderator", value=f"{interaction.user.mention}", inline=False)
+                    embed.add_field(name="Reason", value=reason, inline=False)
+                    embed.add_field(name="Case ID", value=f"`#{case_id}`", inline=True)
+                    if duration:
+                        embed.add_field(name="Duration", value=duration, inline=True)
+                    if evidence:
+                        embed.add_field(name="Evidence", value=evidence, inline=False)
+                    await channel.send(embed=embed)
             return
         config = await db_cog.settings.find_one({"_id": f"modlog_{staff_guild.id}"})
         if not config:
@@ -198,11 +217,9 @@ class ModerationCog(commands.Cog):
     async def warn(self, interaction: discord.Interaction, target: discord.User,
                    reason: str, evidence: str = None):
         await interaction.response.defer(ephemeral=True)
-        if not await self.ensure_staff_server(interaction):
-            return await interaction.followup.send("❌ This command can only be used inside the linked staff server or the linked public server.", ephemeral=True)
         target_member = await self.get_public_member(interaction, target.id)
         if not target_member:
-            return await interaction.followup.send("❌ User not found in linked public server.", ephemeral=True)
+            return await interaction.followup.send("❌ User not found in this server.", ephemeral=True)
 
         db_cog = self.bot.get_cog("DatabaseCog")
         expiry_days = 30
@@ -221,9 +238,9 @@ class ModerationCog(commands.Cog):
             upsert=True
         )
 
-        _, public_guild = await self.get_linked_servers(interaction.guild.id)
+        guild_for_dm = interaction.guild
         active_count = await self._get_active_warn_count(target_member.id)
-        await self.send_dm(target_member, public_guild, "Warn", reason, case_id,
+        await self.send_dm(target_member, guild_for_dm, "Warn", reason, case_id,
                            interaction.user, evidence, active_count)
         await self.log_action(interaction, "warn", target_member, reason, case_id, evidence)
         await self.handle_warning_escalation(interaction, target_member)
@@ -235,8 +252,6 @@ class ModerationCog(commands.Cog):
     @staff_or_developer(moderate_members=True)
     async def remove_warn(self, interaction: discord.Interaction, target: discord.User, case_id: str):
         await interaction.response.defer(ephemeral=True)
-        if not await self.ensure_staff_server(interaction):
-            return await interaction.followup.send("❌ This command can only be used inside the linked staff server or the linked public server.", ephemeral=True)
         db_cog = self.bot.get_cog("DatabaseCog")
         case = await db_cog.mod_cases.find_one({"case_id": case_id, "target_id": str(target.id), "action": "warn"})
         if not case:
@@ -287,8 +302,6 @@ class ModerationCog(commands.Cog):
     @staff_or_developer(moderate_members=True)
     async def list_warns(self, interaction: discord.Interaction, target: discord.User):
         await interaction.response.defer(ephemeral=True)
-        if not await self.ensure_staff_server(interaction):
-            return await interaction.followup.send("❌ This command can only be used inside the linked staff server or the linked public server.", ephemeral=True)
         db_cog = self.bot.get_cog("DatabaseCog")
         profile = await db_cog.mod_users.find_one({"_id": str(target.id)})
         if not profile or not profile.get("active_warns"):
@@ -328,8 +341,6 @@ class ModerationCog(commands.Cog):
     @staff_or_developer(moderate_members=True)
     async def case_note(self, interaction: discord.Interaction, case_id: str, note: str):
         await interaction.response.defer(ephemeral=True)
-        if not await self.ensure_staff_server(interaction):
-            return await interaction.followup.send("❌ This command can only be used inside the linked staff server or the linked public server.", ephemeral=True)
         db_cog = self.bot.get_cog("DatabaseCog")
         case = await db_cog.mod_cases.find_one({"case_id": case_id})
         if not case:
@@ -363,8 +374,6 @@ class ModerationCog(commands.Cog):
     @staff_or_developer(moderate_members=True)
     async def case_view(self, interaction: discord.Interaction, case_id: str):
         await interaction.response.defer(ephemeral=True)
-        if not await self.ensure_staff_server(interaction):
-            return await interaction.followup.send("❌ This command can only be used inside the linked staff server or the linked public server.", ephemeral=True)
         db_cog = self.bot.get_cog("DatabaseCog")
         case = await db_cog.mod_cases.find_one({"case_id": case_id})
         if not case:
@@ -389,7 +398,7 @@ class ModerationCog(commands.Cog):
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ------------------------------------------------------------
-    # Existing moderation commands (with cooldowns)
+    # Existing moderation commands (with cooldowns) – no linked server checks
     # ------------------------------------------------------------
     @app_commands.command(name="timeout", description="Timeout a member.")
     @app_commands.checks.cooldown(1, 5)
@@ -397,16 +406,13 @@ class ModerationCog(commands.Cog):
     async def timeout(self, interaction: discord.Interaction, target: discord.User,
                       minutes: int, reason: str, evidence: str = None):
         await interaction.response.defer(ephemeral=True)
-        if not await self.ensure_staff_server(interaction):
-            return await interaction.followup.send("❌ This command can only be used inside the linked staff server or the linked public server.", ephemeral=True)
         target_member = await self.get_public_member(interaction, target.id)
         if not target_member:
             return await interaction.followup.send("❌ User not found.", ephemeral=True)
         until = datetime.utcnow() + timedelta(minutes=minutes)
         await target_member.timeout(until, reason=reason)
         case_id = await self.create_case(interaction, "timeout", target_member, reason, evidence, minutes * 60)
-        _, public_guild = await self.get_linked_servers(interaction.guild.id)
-        await self.send_dm(target_member, public_guild, "Timeout", reason, case_id,
+        await self.send_dm(target_member, interaction.guild, "Timeout", reason, case_id,
                            interaction.user, evidence, None, f"{minutes} minutes")
         await self.log_action(interaction, "timeout", target_member, reason, case_id, evidence, f"{minutes} minutes")
         await interaction.followup.send(f"✅ {target_member.mention} timed out.")
@@ -418,15 +424,12 @@ class ModerationCog(commands.Cog):
     async def ban(self, interaction: discord.Interaction, target: discord.User,
                   reason: str, evidence: str = None):
         await interaction.response.defer(ephemeral=True)
-        if not await self.ensure_staff_server(interaction):
-            return await interaction.followup.send("❌ This command can only be used inside the linked staff server or the linked public server.", ephemeral=True)
         target_member = await self.get_public_member(interaction, target.id)
         if not target_member:
             return await interaction.followup.send("❌ User not found.", ephemeral=True)
         case_id = await self.create_case(interaction, "ban", target_member, reason, evidence)
-        _, public_guild = await self.get_linked_servers(interaction.guild.id)
-        await self.send_dm(target_member, public_guild, "Ban", reason, case_id, interaction.user, evidence)
-        await public_guild.ban(target_member, reason=reason)
+        await self.send_dm(target_member, interaction.guild, "Ban", reason, case_id, interaction.user, evidence)
+        await target_member.ban(reason=reason)
         await self.log_action(interaction, "ban", target_member, reason, case_id, evidence)
         await interaction.followup.send(f"✅ {target_member} banned successfully.")
         logger.info(f"Ban issued by {interaction.user.id} to {target_member.id}")
@@ -437,14 +440,11 @@ class ModerationCog(commands.Cog):
     async def kick(self, interaction: discord.Interaction, target: discord.User,
                    reason: str, evidence: str = None):
         await interaction.response.defer(ephemeral=True)
-        if not await self.ensure_staff_server(interaction):
-            return await interaction.followup.send("❌ This command can only be used inside the linked staff server or the linked public server.", ephemeral=True)
         target_member = await self.get_public_member(interaction, target.id)
         if not target_member:
             return await interaction.followup.send("❌ User not found.", ephemeral=True)
         case_id = await self.create_case(interaction, "kick", target_member, reason, evidence)
-        _, public_guild = await self.get_linked_servers(interaction.guild.id)
-        await self.send_dm(target_member, public_guild, "Kick", reason, case_id, interaction.user, evidence)
+        await self.send_dm(target_member, interaction.guild, "Kick", reason, case_id, interaction.user, evidence)
         await target_member.kick(reason=reason)
         await self.log_action(interaction, "kick", target_member, reason, case_id, evidence)
         await interaction.followup.send(f"✅ {target_member} kicked successfully.")
@@ -454,8 +454,6 @@ class ModerationCog(commands.Cog):
     @staff_or_developer(moderate_members=True)
     async def history(self, interaction: discord.Interaction, target: discord.User):
         await interaction.response.defer(ephemeral=True)
-        if not await self.ensure_staff_server(interaction):
-            return await interaction.followup.send("❌ This command can only be used inside the linked staff server or the linked public server.", ephemeral=True)
         db_cog = self.bot.get_cog("DatabaseCog")
         cases = await db_cog.mod_cases.find({"target_id": str(target.id)}).sort("timestamp", -1).limit(10).to_list(None)
         if not cases:
@@ -475,8 +473,6 @@ class ModerationCog(commands.Cog):
     @staff_or_developer(manage_messages=True)
     async def purge(self, interaction: discord.Interaction, amount: app_commands.Range[int, 1, 100]):
         await interaction.response.defer(ephemeral=True)
-        if not await self.ensure_staff_server(interaction):
-            return await interaction.followup.send("❌ This command can only be used inside the linked staff server or the linked public server.", ephemeral=True)
         if not interaction.channel.permissions_for(interaction.guild.me).manage_messages:
             return await interaction.followup.send("❌ I do not have permission to manage messages.", ephemeral=True)
         deleted = await interaction.channel.purge(limit=amount)
@@ -489,8 +485,6 @@ class ModerationCog(commands.Cog):
     @staff_or_developer(manage_messages=True)
     async def purge_user(self, interaction: discord.Interaction, user_id: str, amount: app_commands.Range[int, 1, 100]):
         await interaction.response.defer(ephemeral=True)
-        if not await self.ensure_staff_server(interaction):
-            return await interaction.followup.send("❌ This command can only be used inside the linked staff server or the linked public server.", ephemeral=True)
         if not interaction.channel.permissions_for(interaction.guild.me).manage_messages:
             return await interaction.followup.send("❌ I do not have permission to manage messages.", ephemeral=True)
         deleted = []
