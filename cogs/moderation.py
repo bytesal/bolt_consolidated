@@ -45,17 +45,16 @@ class ModerationCog(commands.Cog):
         return None, None
 
     async def ensure_staff_server(self, interaction: discord.Interaction) -> bool:
-        """Allow moderation commands in any server (no forced linked guild check)."""
+        """Allow moderation commands in ANY server – no forced linked guild requirement."""
         return True
 
     async def get_public_member(self, interaction: discord.Interaction, user_id: int):
-        """Return the member from the linked public guild, or from the current guild if no link."""
+        """Get member from linked public guild, or fallback to current guild."""
         _, public_guild = await self.get_linked_servers(interaction.guild.id)
         if public_guild:
             member = public_guild.get_member(user_id)
             if member:
                 return member
-        # Fallback to current guild
         return interaction.guild.get_member(user_id)
 
     async def generate_case(self) -> str:
@@ -129,7 +128,7 @@ class ModerationCog(commands.Cog):
         db_cog = self.bot.get_cog("DatabaseCog")
         staff_guild, _ = await self.get_linked_servers(interaction.guild.id)
         if not staff_guild:
-            # Fallback: use the current guild's configured modlog channel
+            # Fallback: use current guild's modlog channel
             config = await db_cog.settings.find_one({"_id": f"modlog_{interaction.guild.id}"})
             if config:
                 channel = interaction.guild.get_channel(int(config["value"]))
@@ -198,18 +197,19 @@ class ModerationCog(commands.Cog):
         logger.info(f"Escalation for {target.id}: {punishment} after {active_warns} warns")
 
     # ------------------------------------------------------------
-    # Commands
+    # Commands – all now defer immediately
     # ------------------------------------------------------------
     @app_commands.command(name="setmodlog", description="Set the moderation log channel.")
     @app_commands.checks.has_permissions(administrator=True)
     async def set_modlog(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        await interaction.response.defer(ephemeral=True)
         db_cog = self.bot.get_cog("DatabaseCog")
         await db_cog.settings.update_one(
             {"_id": f"modlog_{interaction.guild.id}"},
             {"$set": {"value": str(channel.id)}},
             upsert=True
         )
-        await interaction.response.send_message(f"✅ Mod‑log channel set to {channel.mention}")
+        await interaction.followup.send(f"✅ Mod‑log channel set to {channel.mention}")
 
     @app_commands.command(name="warn", description="Warn a member.")
     @app_commands.checks.cooldown(1, 5)
@@ -238,9 +238,8 @@ class ModerationCog(commands.Cog):
             upsert=True
         )
 
-        guild_for_dm = interaction.guild
         active_count = await self._get_active_warn_count(target_member.id)
-        await self.send_dm(target_member, guild_for_dm, "Warn", reason, case_id,
+        await self.send_dm(target_member, interaction.guild, "Warn", reason, case_id,
                            interaction.user, evidence, active_count)
         await self.log_action(interaction, "warn", target_member, reason, case_id, evidence)
         await self.handle_warning_escalation(interaction, target_member)
@@ -278,18 +277,19 @@ class ModerationCog(commands.Cog):
                 severity="info"
             )
 
+        # Try to log to staff guild modlog, fallback to current guild
         staff_guild, _ = await self.get_linked_servers(interaction.guild.id)
-        if staff_guild:
-            config = await db_cog.settings.find_one({"_id": f"modlog_{staff_guild.id}"})
-            if config:
-                channel = staff_guild.get_channel(int(config["value"]))
-                if channel:
-                    embed = discord.Embed(title="⚠️ Warning Removed", color=discord.Color.green(), timestamp=datetime.utcnow())
-                    embed.add_field(name="User", value=f"{target.mention} (`{target.id}`)", inline=False)
-                    embed.add_field(name="Moderator", value=interaction.user.mention, inline=False)
-                    embed.add_field(name="Original Warn Case", value=f"`#{case_id}`", inline=False)
-                    embed.add_field(name="Original Reason", value=case["reason"], inline=False)
-                    await channel.send(embed=embed)
+        target_guild = staff_guild if staff_guild else interaction.guild
+        config = await db_cog.settings.find_one({"_id": f"modlog_{target_guild.id}"})
+        if config:
+            channel = target_guild.get_channel(int(config["value"]))
+            if channel:
+                embed = discord.Embed(title="⚠️ Warning Removed", color=discord.Color.green(), timestamp=datetime.utcnow())
+                embed.add_field(name="User", value=f"{target.mention} (`{target.id}`)", inline=False)
+                embed.add_field(name="Moderator", value=interaction.user.mention, inline=False)
+                embed.add_field(name="Original Warn Case", value=f"`#{case_id}`", inline=False)
+                embed.add_field(name="Original Reason", value=case["reason"], inline=False)
+                await channel.send(embed=embed)
 
         try:
             await target.send(f"✅ Your warning `#{case_id}` has been removed by staff.")
@@ -325,15 +325,16 @@ class ModerationCog(commands.Cog):
     @app_commands.command(name="setwarnexpiry", description="Set number of days until warnings expire (0 = never).")
     @app_commands.checks.has_permissions(administrator=True)
     async def set_warn_expiry(self, interaction: discord.Interaction, days: int):
+        await interaction.response.defer(ephemeral=True)
         if days < 0:
-            return await interaction.response.send_message("Days cannot be negative.", ephemeral=True)
+            return await interaction.followup.send("Days cannot be negative.", ephemeral=True)
         db_cog = self.bot.get_cog("DatabaseCog")
         await db_cog.settings.update_one(
             {"_id": f"warnexpiry_{interaction.guild.id}"},
             {"$set": {"value": days}},
             upsert=True
         )
-        await interaction.response.send_message(f"✅ Warnings will expire after {days} days." if days > 0 else "✅ Warnings will never expire.")
+        await interaction.followup.send(f"✅ Warnings will expire after {days} days." if days > 0 else "✅ Warnings will never expire.")
         logger.info(f"Warning expiry set to {days} days by {interaction.user.id} in guild {interaction.guild.id}")
 
     @app_commands.command(name="casenote", description="Add a private note to a moderation case.")
@@ -397,9 +398,6 @@ class ModerationCog(commands.Cog):
             embed.add_field(name="Notes (last 5)", value=notes_text or "None", inline=False)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    # ------------------------------------------------------------
-    # Existing moderation commands (with cooldowns) – no linked server checks
-    # ------------------------------------------------------------
     @app_commands.command(name="timeout", description="Timeout a member.")
     @app_commands.checks.cooldown(1, 5)
     @staff_or_developer(moderate_members=True)
@@ -501,11 +499,10 @@ class ModerationCog(commands.Cog):
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ------------------------------------------------------------
-    # Background tasks
+    # Background tasks (unchanged)
     # ------------------------------------------------------------
     @tasks.loop(minutes=1)
     async def temp_punishment_loop(self):
-        # Placeholder – for future temp punishment checks
         pass
 
     @temp_punishment_loop.before_loop
