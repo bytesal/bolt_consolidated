@@ -10,7 +10,6 @@ from discord.ext import commands
 import discord
 from dotenv import load_dotenv
 
-# Import logging setup
 from utils.logger import setup_logging, get_logger
 
 # ------------------------------------------------------------
@@ -20,13 +19,11 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
 load_dotenv()
 
-# Setup logging early
-WEBHOOK_URL = os.getenv("LOG_WEBHOOK_URL")  # optional
-setup_logging(WEBHOOK_URL)
+setup_logging(os.getenv("LOG_WEBHOOK_URL"))
 logger = get_logger("main")
 
 # ------------------------------------------------------------
-# Guild Configuration
+# Guild Configuration (only used for presence, not for sync)
 # ------------------------------------------------------------
 MAIN_GUILD_ID = int(os.getenv("MAIN_GUILD_ID", "0"))
 STAFF_GUILD_ID = int(os.getenv("STAFF_GUILD_ID", "0"))
@@ -35,7 +32,7 @@ MAIN_GUILD = discord.Object(id=MAIN_GUILD_ID) if MAIN_GUILD_ID else None
 STAFF_GUILD = discord.Object(id=STAFF_GUILD_ID) if STAFF_GUILD_ID else None
 
 # ------------------------------------------------------------
-# Flask Keep‑Alive Server (Threaded)
+# Flask Keep‑Alive
 # ------------------------------------------------------------
 flask_app = Flask("")
 flask_thread = None
@@ -84,11 +81,12 @@ class BoltBot(commands.Bot):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._ready_flag = False
+        self._cleared_guild_commands = False
 
     async def setup_hook(self):
         logger.info("setup_hook started.")
 
-        # Load cogs with full error logging
+        # Load cogs
         cogs_dir = os.path.join(BASE_DIR, "cogs")
         if os.path.exists(cogs_dir):
             for filename in sorted(os.listdir(cogs_dir)):
@@ -101,40 +99,37 @@ class BoltBot(commands.Bot):
                         logger.error(f"Failed to load cog cogs.{cog_name}: {e}")
                         logger.error(traceback.format_exc())
 
-        # Register static persistent views
+        # Static views
         self._add_static_views()
 
-        # Restore dynamic database‑backed views
+        # Database views and indexes
         db_cog = self.get_cog("DatabaseCog")
-        if db_cog and hasattr(db_cog, "restore_persistent_views"):
-            try:
-                await db_cog.restore_persistent_views()
-                logger.info("Persistent views restored.")
-            except Exception as e:
-                logger.error(f"Persistent view restoration failed: {e}")
+        if db_cog:
+            if hasattr(db_cog, "restore_persistent_views"):
+                try:
+                    await db_cog.restore_persistent_views()
+                    logger.info("Persistent views restored.")
+                except Exception as e:
+                    logger.error(f"Persistent view restoration failed: {e}")
+            if hasattr(db_cog, "ensure_indexes"):
+                try:
+                    await db_cog.ensure_indexes()
+                    logger.info("Database indexes verified/created.")
+                except Exception as e:
+                    logger.error(f"Index creation failed: {e}")
 
-        # Ensure database indexes
-        if db_cog and hasattr(db_cog, "ensure_indexes"):
-            try:
-                await db_cog.ensure_indexes()
-                logger.info("Database indexes verified/created.")
-            except Exception as e:
-                logger.error(f"Index creation failed: {e}")
-
-        # Sync slash commands
-        await self._sync_commands()
+        # Sync commands – FIX: only global sync, no per‑guild sync
+        await self._sync_commands_fixed()
 
         logger.info("setup_hook completed.")
 
     def _add_static_views(self):
-        """Add views that do not depend on database data."""
         try:
             from cogs.help import HelpView
             self.add_view(HelpView())
             logger.info("HelpView registered.")
         except Exception as e:
             logger.error(f"HelpView registration failed: {e}")
-
         try:
             from cogs.modmail import TicketCategoryView, OpenTicketButton
             self.add_view(TicketCategoryView(self))
@@ -143,18 +138,30 @@ class BoltBot(commands.Bot):
         except Exception as e:
             logger.error(f"Modmail views registration failed: {e}")
 
-    async def _sync_commands(self):
-        """Sync commands to guilds and globally."""
-        if STAFF_GUILD_ID != 0 and STAFF_GUILD:
-            self.tree.copy_global_to(guild=STAFF_GUILD)
-            synced = await self.tree.sync(guild=STAFF_GUILD)
-            logger.info(f"Synced {len(synced)} staff guild commands.")
+    async def _sync_commands_fixed(self):
+        """Sync only globally. Optionally clear old guild commands once."""
+        db_cog = self.get_cog("DatabaseCog")
+        if db_cog and not self._cleared_guild_commands:
+            # Check if we already cleared guild commands (store flag in DB)
+            cleared_flag = await db_cog.settings.find_one({"_id": "guild_commands_cleared"})
+            if not cleared_flag:
+                logger.info("Clearing existing guild commands from staff/main guilds...")
+                # Clear commands from staff guild if configured
+                if STAFF_GUILD:
+                    await self.tree.sync(guild=STAFF_GUILD, commands=[])
+                    logger.info(f"Cleared commands from staff guild {STAFF_GUILD.id}")
+                if MAIN_GUILD and MAIN_GUILD != STAFF_GUILD:
+                    await self.tree.sync(guild=MAIN_GUILD, commands=[])
+                    logger.info(f"Cleared commands from main guild {MAIN_GUILD.id}")
+                # Mark as cleared in DB
+                await db_cog.settings.update_one(
+                    {"_id": "guild_commands_cleared"},
+                    {"$set": {"value": True}},
+                    upsert=True
+                )
+                self._cleared_guild_commands = True
 
-        if MAIN_GUILD_ID != 0 and MAIN_GUILD:
-            self.tree.copy_global_to(guild=MAIN_GUILD)
-            synced = await self.tree.sync(guild=MAIN_GUILD)
-            logger.info(f"Synced {len(synced)} main guild commands.")
-
+        # Global sync only
         synced = await self.tree.sync()
         logger.info(f"Synced {len(synced)} global commands.")
 
@@ -189,7 +196,6 @@ class BoltBot(commands.Bot):
 intents = discord.Intents.all()
 bot = BoltBot(command_prefix=get_prefix, intents=intents, help_command=None)
 
-# Load developer IDs from environment
 bot.DEVELOPER_IDS = []
 dev_ids_str = os.getenv("DEVELOPER_IDS", "")
 if dev_ids_str:
@@ -205,7 +211,7 @@ async def global_blacklist_check(ctx):
         return True
     db_cog = bot.get_cog("DatabaseCog")
     if not db_cog or not db_cog.db:
-        return True  # If database not connected, allow commands (but features may fail)
+        return True
     user_blacklist = await db_cog.blacklist.find_one({"_id": str(ctx.author.id), "type": "user"})
     if user_blacklist:
         return False
@@ -223,16 +229,14 @@ async def global_blacklist_check(ctx):
 async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
         return
-    # Handle cooldown errors gracefully
     if isinstance(error, commands.CommandOnCooldown):
         await ctx.send(f"⏳ Command on cooldown. Try again in {error.retry_after:.1f} seconds.", ephemeral=True)
         return
-    # Log other errors
     logger.error(f"Unhandled command error: {error}")
     raise error
 
 # ------------------------------------------------------------
-# Signal Handling for Graceful Shutdown
+# Signal Handling
 # ------------------------------------------------------------
 def handle_shutdown_signal(signum, frame):
     logger.info(f"Received signal {signal.Signals(signum).name}. Shutting down...")
