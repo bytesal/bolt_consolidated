@@ -112,12 +112,15 @@ class BoltBot(commands.Bot):
                 except Exception as e:
                     logger.error(f"Index creation failed: {e}")
 
-        # Clear old guild commands once (fix duplicates)
-        await self._clear_guild_commands_once(db_cog)
+        # --- DUPLICATE COMMAND FIX ---
+        # Clear ALL commands from staff/main guilds (if configured)
+        # This removes any leftover guild‑specific commands that cause duplicates.
+        await self._clear_guild_commands()
 
-        # Sync only global commands
+        # Sync only global commands (no per‑guild sync)
         synced = await self.tree.sync()
         logger.info(f"Synced {len(synced)} global commands.")
+        # -----------------------------
 
         logger.info("setup_hook completed.")
 
@@ -136,36 +139,25 @@ class BoltBot(commands.Bot):
         except Exception as e:
             logger.error(f"Modmail views registration failed: {e}")
 
-    async def _clear_guild_commands_once(self, db_cog):
-        """Clear guild commands from staff/main guilds exactly once."""
-        if not db_cog or not db_cog.db:
-            logger.warning("Database not available; cannot clear guild commands automatically.")
+    async def _clear_guild_commands(self):
+        """Clear commands from staff/main guilds (if IDs are provided)."""
+        guilds_to_clear = []
+        if STAFF_GUILD:
+            guilds_to_clear.append(STAFF_GUILD)
+        if MAIN_GUILD and MAIN_GUILD.id != STAFF_GUILD_ID:
+            guilds_to_clear.append(MAIN_GUILD)
+
+        if not guilds_to_clear:
+            logger.info("No guild IDs configured for clearing; skipping.")
             return
 
-        # Check if already cleared
-        cleared_flag = await db_cog.settings.find_one({"_id": "guild_commands_cleared"})
-        if cleared_flag:
-            logger.info("Guild commands already cleared. Skipping.")
-            return
-
-        logger.info("Clearing existing guild commands from staff/main guilds...")
-        try:
-            if STAFF_GUILD:
-                await self.tree.sync(guild=STAFF_GUILD, commands=[])
-                logger.info(f"Cleared commands from staff guild {STAFF_GUILD.id}")
-            if MAIN_GUILD and MAIN_GUILD.id != STAFF_GUILD_ID:
-                await self.tree.sync(guild=MAIN_GUILD, commands=[])
-                logger.info(f"Cleared commands from main guild {MAIN_GUILD.id}")
-            # Mark as cleared
-            await db_cog.settings.update_one(
-                {"_id": "guild_commands_cleared"},
-                {"$set": {"value": True}},
-                upsert=True
-            )
-            logger.info("Guild commands cleared successfully.")
-        except Exception as e:
-            logger.error(f"Failed to clear guild commands: {e}")
-            logger.error(traceback.format_exc())
+        for guild in guilds_to_clear:
+            try:
+                # Sync an empty list to the guild – this removes all guild commands
+                await self.tree.sync(guild=guild, commands=[])
+                logger.info(f"Cleared commands from guild {guild.id}")
+            except Exception as e:
+                logger.error(f"Failed to clear commands from guild {guild.id}: {e}")
 
     async def on_ready(self):
         if not self._ready_flag:
