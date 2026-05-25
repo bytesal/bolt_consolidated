@@ -27,7 +27,7 @@ MAIN_GUILD = discord.Object(id=MAIN_GUILD_ID) if MAIN_GUILD_ID else None
 STAFF_GUILD = discord.Object(id=STAFF_GUILD_ID) if STAFF_GUILD_ID else None
 
 # ------------------------------------------------------------
-# Flask keep‑alive (unchanged)
+# Flask keep‑alive
 # ------------------------------------------------------------
 flask_app = Flask("")
 flask_thread = None
@@ -55,7 +55,7 @@ def stop_flask():
     logger.info("Flask server stopping...")
 
 # ------------------------------------------------------------
-# Prefix resolver (unchanged)
+# Prefix resolver
 # ------------------------------------------------------------
 async def get_prefix(bot, message):
     if message.author.id in bot.DEVELOPER_IDS:
@@ -80,7 +80,7 @@ class BoltBot(commands.Bot):
     async def setup_hook(self):
         logger.info("setup_hook started.")
 
-        # Load cogs with error logging
+        # Load cogs
         cogs_dir = os.path.join(BASE_DIR, "cogs")
         if os.path.exists(cogs_dir):
             for filename in sorted(os.listdir(cogs_dir)):
@@ -112,7 +112,10 @@ class BoltBot(commands.Bot):
                 except Exception as e:
                     logger.error(f"Index creation failed: {e}")
 
-        # Sync commands: only global, no per‑guild sync (fixes duplicates without clearing)
+        # Clear old guild commands once (fix duplicates)
+        await self._clear_guild_commands_once(db_cog)
+
+        # Sync only global commands
         synced = await self.tree.sync()
         logger.info(f"Synced {len(synced)} global commands.")
 
@@ -132,6 +135,37 @@ class BoltBot(commands.Bot):
             logger.info("Modmail views registered.")
         except Exception as e:
             logger.error(f"Modmail views registration failed: {e}")
+
+    async def _clear_guild_commands_once(self, db_cog):
+        """Clear guild commands from staff/main guilds exactly once."""
+        if not db_cog or not db_cog.db:
+            logger.warning("Database not available; cannot clear guild commands automatically.")
+            return
+
+        # Check if already cleared
+        cleared_flag = await db_cog.settings.find_one({"_id": "guild_commands_cleared"})
+        if cleared_flag:
+            logger.info("Guild commands already cleared. Skipping.")
+            return
+
+        logger.info("Clearing existing guild commands from staff/main guilds...")
+        try:
+            if STAFF_GUILD:
+                await self.tree.sync(guild=STAFF_GUILD, commands=[])
+                logger.info(f"Cleared commands from staff guild {STAFF_GUILD.id}")
+            if MAIN_GUILD and MAIN_GUILD.id != STAFF_GUILD_ID:
+                await self.tree.sync(guild=MAIN_GUILD, commands=[])
+                logger.info(f"Cleared commands from main guild {MAIN_GUILD.id}")
+            # Mark as cleared
+            await db_cog.settings.update_one(
+                {"_id": "guild_commands_cleared"},
+                {"$set": {"value": True}},
+                upsert=True
+            )
+            logger.info("Guild commands cleared successfully.")
+        except Exception as e:
+            logger.error(f"Failed to clear guild commands: {e}")
+            logger.error(traceback.format_exc())
 
     async def on_ready(self):
         if not self._ready_flag:
@@ -192,7 +226,6 @@ async def global_blacklist_check(ctx):
             return False
     return True
 
-# Global interaction error handler to catch all failures
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
