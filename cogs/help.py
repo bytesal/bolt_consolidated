@@ -31,9 +31,12 @@ class HelpDropdown(discord.ui.Select):
             embed.title = "🛡️ Moderation Commands"
             embed.description = "Cross-server moderation commands used by staff members."
             embed.add_field(name="Available Commands", value="\n".join([
-                "`/warn` → Warn a member.",
+                "`/warn` → Warn a member (expires after set days).",
                 "`/removewarn` → Remove a specific warning by case ID.",
                 "`/warns` → List active warnings for a user.",
+                "`/setwarnexpiry` → Set days until warnings expire (0 = never).",
+                "`/casenote` → Add a private note to a case.",
+                "`/caseview` → View a case with all notes.",
                 "`/timeout` → Timeout a member.",
                 "`/kick` → Kick a member.",
                 "`/ban` → Ban a member.",
@@ -53,12 +56,13 @@ class HelpDropdown(discord.ui.Select):
 
         elif category == "Modmail":
             embed.title = "📩 Modmail Commands"
-            embed.description = "Professional support ticket system with anonymous replies and transcripts."
+            embed.description = "Professional support ticket system with anonymous replies, transcripts, and claim locking."
             embed.add_field(name="Available Commands", value="\n".join([
                 "`/setupmodmail` → Configure modmail category and transcript channel.",
                 "`/panel` → Send modmail panel.",
                 "`DM the bot` → Create a support ticket.",
-                "`Claim Button` → Claim a ticket.",
+                "`Claim Button` → Claim a ticket (prevents others from replying).",
+                "`Unclaim Button` → Release a claimed ticket.",
                 "`Close Button` → Close a ticket (saves transcript).",
             ]), inline=False)
 
@@ -103,6 +107,7 @@ class HelpDropdown(discord.ui.Select):
                 "`/serverinfo` → View server information.",
                 "`/addreactrole` → Add a reaction role to a message.",
                 "`/removereactrole` → Remove a reaction role.",
+                "`/restoreroles` → Manually restore roles from backup.",
             ]), inline=False)
 
         elif category == "Staff":
