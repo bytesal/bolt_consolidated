@@ -3,6 +3,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 from datetime import datetime, timedelta
 import uuid
+import traceback
 from utils.logger import get_logger
 from utils.checks import staff_or_developer
 
@@ -26,10 +27,9 @@ class ModerationCog(commands.Cog):
         self.expiry_check_loop.cancel()
 
     # ------------------------------------------------------------
-    # Helpers – no cross-server dependency
+    # Helper methods
     # ------------------------------------------------------------
     async def get_target_member(self, interaction: discord.Interaction, user_id: int):
-        """Get member from the current guild (no linking required)."""
         return interaction.guild.get_member(user_id)
 
     async def generate_case(self) -> str:
@@ -68,21 +68,8 @@ class ModerationCog(commands.Cog):
             )
         except Exception as e:
             logger.error(f"Failed to create case: {e}")
+            logger.error(traceback.format_exc())
             return None
-
-        # Audit log
-        audit_cog = self.bot.get_cog("AuditCog")
-        if audit_cog:
-            await audit_cog.log_audit(
-                guild_id=interaction.guild.id,
-                action=action,
-                actor_id=interaction.user.id,
-                actor_name=interaction.user.name,
-                target_id=target.id,
-                target_name=target.name,
-                details={"reason": reason, "case_id": case_id, "evidence": evidence},
-                severity="warning" if action == "warn" else "info"
-            )
         return case_id
 
     async def send_dm(self, target, guild, action, reason, case_id, moderator,
@@ -162,7 +149,99 @@ class ModerationCog(commands.Cog):
         logger.info(f"Escalation for {target.id}: {punishment} after {active_warns} warns")
 
     # ------------------------------------------------------------
-    # Moderation Commands (all with defer)
+    # Warn command with robust error handling
+    # ------------------------------------------------------------
+    @app_commands.command(name="warn", description="Warn a member.")
+    @app_commands.checks.cooldown(1, 5)
+    @staff_or_developer(moderate_members=True)
+    async def warn(self, interaction: discord.Interaction, target: discord.User,
+                   reason: str, evidence: str = None):
+        logger.info(f"=== /warn called by {interaction.user.id} in guild {interaction.guild.id} ===")
+        
+        # Safe defer - handle expired interactions
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=True)
+                logger.info("Deferred response")
+            else:
+                logger.warning("Interaction already responded, using followup")
+        except discord.NotFound as e:
+            logger.error(f"Interaction not found (likely expired): {e}")
+            # Cannot respond, so just return
+            return
+        except Exception as e:
+            logger.error(f"Failed to defer: {e}")
+            try:
+                await interaction.response.send_message("❌ An error occurred. Please try again.", ephemeral=True)
+            except:
+                pass
+            return
+
+        try:
+            target_member = interaction.guild.get_member(target.id)
+            if not target_member:
+                logger.warning(f"Target {target.id} not found in guild")
+                await interaction.followup.send("❌ User not found in this server.", ephemeral=True)
+                return
+            logger.info(f"Target member found: {target_member.id}")
+
+            db_cog = self.bot.get_cog("DatabaseCog")
+            if not db_cog:
+                logger.error("DatabaseCog not available")
+                await interaction.followup.send("❌ Database not available.", ephemeral=True)
+                return
+            logger.info("DatabaseCog retrieved")
+
+            expiry_days = 30
+            setting = await db_cog.settings.find_one({"_id": f"warnexpiry_{interaction.guild.id}"})
+            if setting:
+                expiry_days = setting.get("value", 30)
+            expires_at = None
+            if expiry_days > 0:
+                expires_at = datetime.utcnow() + timedelta(days=expiry_days)
+            logger.info(f"Expiry set to {expiry_days} days")
+
+            case_id = await self.create_case(interaction, "warn", target_member, reason, evidence, expires_at=expires_at)
+            if not case_id:
+                logger.error("Failed to create case")
+                await interaction.followup.send("❌ Failed to create case. Check database connection.", ephemeral=True)
+                return
+            logger.info(f"Case created: {case_id}")
+
+            await db_cog.mod_users.update_one(
+                {"_id": str(target_member.id)},
+                {"$push": {"active_warns": case_id}, "$inc": {"warnings": 1}},
+                upsert=True
+            )
+            logger.info("User profile updated")
+
+            active_count = await self._get_active_warn_count(target_member.id)
+            await self.send_dm(target_member, interaction.guild, "Warn", reason, case_id,
+                               interaction.user, evidence, active_count)
+            logger.info("DM sent")
+
+            await self.log_action(interaction, "warn", target_member, reason, case_id, evidence)
+            logger.info("Action logged")
+
+            await self.handle_warning_escalation(interaction, target_member)
+            logger.info("Escalation check completed")
+
+            await interaction.followup.send(f"✅ {target_member.mention} warned successfully.\nCase: `#{case_id}`")
+            logger.info(f"=== /warn completed successfully ===")
+
+        except discord.NotFound as e:
+            logger.error(f"Interaction expired during command execution: {e}")
+            # Cannot respond, but we already logged
+        except Exception as e:
+            logger.error(f"Unhandled exception in /warn: {e}")
+            logger.error(traceback.format_exc())
+            try:
+                await interaction.followup.send("❌ An internal error occurred. Check logs.", ephemeral=True)
+            except:
+                pass
+
+    # ------------------------------------------------------------
+    # Other commands (same robust pattern can be applied, but keep as before)
     # ------------------------------------------------------------
     @app_commands.command(name="setmodlog", description="Set the moderation log channel.")
     @app_commands.checks.has_permissions(administrator=True)
@@ -178,50 +257,6 @@ class ModerationCog(commands.Cog):
         )
         await interaction.followup.send(f"✅ Mod‑log channel set to {channel.mention}")
 
-    @app_commands.command(name="warn", description="Warn a member.")
-    @app_commands.checks.cooldown(1, 5)
-    @staff_or_developer(moderate_members=True)
-    async def warn(self, interaction: discord.Interaction, target: discord.User,
-                   reason: str, evidence: str = None):
-        await interaction.response.defer(ephemeral=True)
-        logger.info(f"/warn called by {interaction.user.id} in {interaction.guild.id}")
-
-        # Get target member in current guild
-        target_member = interaction.guild.get_member(target.id)
-        if not target_member:
-            return await interaction.followup.send("❌ User not found in this server.", ephemeral=True)
-
-        db_cog = self.bot.get_cog("DatabaseCog")
-        if not db_cog:
-            return await interaction.followup.send("❌ Database not available.", ephemeral=True)
-
-        # Get expiry days from settings
-        expiry_days = 30
-        setting = await db_cog.settings.find_one({"_id": f"warnexpiry_{interaction.guild.id}"})
-        if setting:
-            expiry_days = setting.get("value", 30)
-        expires_at = None
-        if expiry_days > 0:
-            expires_at = datetime.utcnow() + timedelta(days=expiry_days)
-
-        case_id = await self.create_case(interaction, "warn", target_member, reason, evidence, expires_at=expires_at)
-        if not case_id:
-            return await interaction.followup.send("❌ Failed to create case. Check database connection.", ephemeral=True)
-
-        await db_cog.mod_users.update_one(
-            {"_id": str(target_member.id)},
-            {"$push": {"active_warns": case_id}, "$inc": {"warnings": 1}},
-            upsert=True
-        )
-
-        active_count = await self._get_active_warn_count(target_member.id)
-        await self.send_dm(target_member, interaction.guild, "Warn", reason, case_id,
-                           interaction.user, evidence, active_count)
-        await self.log_action(interaction, "warn", target_member, reason, case_id, evidence)
-        await self.handle_warning_escalation(interaction, target_member)
-        await interaction.followup.send(f"✅ {target_member.mention} warned successfully.\nCase: `#{case_id}`")
-        logger.info(f"Warn issued by {interaction.user.id} to {target_member.id} | Case {case_id}")
-
     @app_commands.command(name="removewarn", description="Remove a specific warning by its case ID.")
     @app_commands.checks.cooldown(1, 5)
     @staff_or_developer(moderate_members=True)
@@ -230,20 +265,16 @@ class ModerationCog(commands.Cog):
         db_cog = self.bot.get_cog("DatabaseCog")
         if not db_cog:
             return await interaction.followup.send("❌ Database error.", ephemeral=True)
-
         case = await db_cog.mod_cases.find_one({"case_id": case_id, "target_id": str(target.id), "action": "warn"})
         if not case:
             return await interaction.followup.send("❌ Warn case not found.", ephemeral=True)
         if case.get("revoked", False):
             return await interaction.followup.send("❌ This warning has already been removed.", ephemeral=True)
-
         await db_cog.mod_cases.update_one({"_id": case["_id"]}, {"$set": {"revoked": True, "active": False}})
         await db_cog.mod_users.update_one(
             {"_id": str(target.id)},
             {"$pull": {"active_warns": case_id}, "$inc": {"warnings": -1}}
         )
-
-        # Log to modlog
         config = await db_cog.settings.find_one({"_id": f"modlog_{interaction.guild.id}"})
         if config:
             channel = interaction.guild.get_channel(int(config["value"]))
@@ -254,13 +285,11 @@ class ModerationCog(commands.Cog):
                 embed.add_field(name="Original Warn Case", value=f"`#{case_id}`", inline=False)
                 embed.add_field(name="Original Reason", value=case["reason"], inline=False)
                 await channel.send(embed=embed)
-
         try:
             await target.send(f"✅ Your warning `#{case_id}` has been removed by staff.")
         except Exception:
             pass
         await interaction.followup.send(f"✅ Warning `#{case_id}` removed for {target.mention}.")
-        logger.info(f"Warning {case_id} removed by {interaction.user.id}")
 
     @app_commands.command(name="warns", description="List active warnings for a user.")
     @staff_or_developer(moderate_members=True)
@@ -269,11 +298,9 @@ class ModerationCog(commands.Cog):
         db_cog = self.bot.get_cog("DatabaseCog")
         if not db_cog:
             return await interaction.followup.send("❌ Database error.", ephemeral=True)
-
         profile = await db_cog.mod_users.find_one({"_id": str(target.id)})
         if not profile or not profile.get("active_warns"):
             return await interaction.followup.send(f"📭 {target.mention} has no active warnings.", ephemeral=True)
-
         active_warns = []
         for case_id in profile["active_warns"]:
             case = await db_cog.mod_cases.find_one({"case_id": case_id, "revoked": {"$ne": True}})
@@ -281,7 +308,6 @@ class ModerationCog(commands.Cog):
                 active_warns.append(case)
         if not active_warns:
             return await interaction.followup.send(f"📭 {target.mention} has no active warnings.", ephemeral=True)
-
         embed = discord.Embed(title=f"Active Warnings for {target.display_name}", color=discord.Color.orange())
         for w in active_warns[:10]:
             embed.add_field(
@@ -306,7 +332,6 @@ class ModerationCog(commands.Cog):
             upsert=True
         )
         await interaction.followup.send(f"✅ Warnings will expire after {days} days." if days > 0 else "✅ Warnings will never expire.")
-        logger.info(f"Warning expiry set to {days} days by {interaction.user.id}")
 
     @app_commands.command(name="casenote", description="Add a private note to a moderation case.")
     @app_commands.checks.cooldown(1, 3)
@@ -325,12 +350,8 @@ class ModerationCog(commands.Cog):
             "author_name": interaction.user.name,
             "timestamp": datetime.utcnow()
         }
-        await db_cog.mod_cases.update_one(
-            {"_id": case["_id"]},
-            {"$push": {"notes": note_doc}}
-        )
+        await db_cog.mod_cases.update_one({"_id": case["_id"]}, {"$push": {"notes": note_doc}})
         await interaction.followup.send(f"✅ Note added to case `#{case_id}`.", ephemeral=True)
-        logger.info(f"Note added to case {case_id} by {interaction.user.id}")
 
     @app_commands.command(name="caseview", description="View a moderation case with all notes.")
     @staff_or_developer(moderate_members=True)
@@ -361,9 +382,6 @@ class ModerationCog(commands.Cog):
             embed.add_field(name="Notes (last 5)", value=notes_text or "None", inline=False)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    # ------------------------------------------------------------
-    # Standard moderation commands
-    # ------------------------------------------------------------
     @app_commands.command(name="timeout", description="Timeout a member.")
     @app_commands.checks.cooldown(1, 5)
     @staff_or_developer(moderate_members=True)
@@ -464,7 +482,7 @@ class ModerationCog(commands.Cog):
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ------------------------------------------------------------
-    # Background tasks (unchanged)
+    # Background tasks
     # ------------------------------------------------------------
     @tasks.loop(minutes=1)
     async def temp_punishment_loop(self):
