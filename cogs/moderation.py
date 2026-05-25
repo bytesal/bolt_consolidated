@@ -45,8 +45,12 @@ class ModerationCog(commands.Cog):
         return None, None
 
     async def ensure_staff_server(self, interaction: discord.Interaction) -> bool:
-        staff_guild, _ = await self.get_linked_servers(interaction.guild.id)
-        return staff_guild is not None and interaction.guild.id == staff_guild.id
+        """Allow execution in either the staff guild OR the linked public guild."""
+        staff_guild, public_guild = await self.get_linked_servers(interaction.guild.id)
+        if staff_guild is None or public_guild is None:
+            return False
+        # Command allowed if current guild is staff guild OR public guild
+        return interaction.guild.id in (staff_guild.id, public_guild.id)
 
     async def get_public_member(self, interaction: discord.Interaction, user_id: int):
         _, public_guild = await self.get_linked_servers(interaction.guild.id)
@@ -85,7 +89,6 @@ class ModerationCog(commands.Cog):
             {"$inc": {"total_cases": 1}},
             upsert=True
         )
-        # Audit log
         audit_cog = self.bot.get_cog("AuditCog")
         if audit_cog:
             await audit_cog.log_audit(
@@ -196,13 +199,12 @@ class ModerationCog(commands.Cog):
                    reason: str, evidence: str = None):
         await interaction.response.defer(ephemeral=True)
         if not await self.ensure_staff_server(interaction):
-            return await interaction.followup.send("❌ This command can only be used inside the linked staff server.", ephemeral=True)
+            return await interaction.followup.send("❌ This command can only be used inside the linked staff server or the linked public server.", ephemeral=True)
         target_member = await self.get_public_member(interaction, target.id)
         if not target_member:
             return await interaction.followup.send("❌ User not found in linked public server.", ephemeral=True)
 
         db_cog = self.bot.get_cog("DatabaseCog")
-        # Get expiry days from guild settings
         expiry_days = 30
         setting = await db_cog.settings.find_one({"_id": f"warnexpiry_{interaction.guild.id}"})
         if setting:
@@ -234,7 +236,7 @@ class ModerationCog(commands.Cog):
     async def remove_warn(self, interaction: discord.Interaction, target: discord.User, case_id: str):
         await interaction.response.defer(ephemeral=True)
         if not await self.ensure_staff_server(interaction):
-            return await interaction.followup.send("❌ Staff server only.", ephemeral=True)
+            return await interaction.followup.send("❌ This command can only be used inside the linked staff server or the linked public server.", ephemeral=True)
         db_cog = self.bot.get_cog("DatabaseCog")
         case = await db_cog.mod_cases.find_one({"case_id": case_id, "target_id": str(target.id), "action": "warn"})
         if not case:
@@ -248,7 +250,6 @@ class ModerationCog(commands.Cog):
             {"$pull": {"active_warns": case_id}, "$inc": {"warnings": -1}}
         )
 
-        # Log to audit
         audit_cog = self.bot.get_cog("AuditCog")
         if audit_cog:
             await audit_cog.log_audit(
@@ -286,6 +287,8 @@ class ModerationCog(commands.Cog):
     @staff_or_developer(moderate_members=True)
     async def list_warns(self, interaction: discord.Interaction, target: discord.User):
         await interaction.response.defer(ephemeral=True)
+        if not await self.ensure_staff_server(interaction):
+            return await interaction.followup.send("❌ This command can only be used inside the linked staff server or the linked public server.", ephemeral=True)
         db_cog = self.bot.get_cog("DatabaseCog")
         profile = await db_cog.mod_users.find_one({"_id": str(target.id)})
         if not profile or not profile.get("active_warns"):
@@ -325,6 +328,8 @@ class ModerationCog(commands.Cog):
     @staff_or_developer(moderate_members=True)
     async def case_note(self, interaction: discord.Interaction, case_id: str, note: str):
         await interaction.response.defer(ephemeral=True)
+        if not await self.ensure_staff_server(interaction):
+            return await interaction.followup.send("❌ This command can only be used inside the linked staff server or the linked public server.", ephemeral=True)
         db_cog = self.bot.get_cog("DatabaseCog")
         case = await db_cog.mod_cases.find_one({"case_id": case_id})
         if not case:
@@ -339,7 +344,6 @@ class ModerationCog(commands.Cog):
             {"_id": case["_id"]},
             {"$push": {"notes": note_doc}}
         )
-        # Audit log
         audit_cog = self.bot.get_cog("AuditCog")
         if audit_cog:
             await audit_cog.log_audit(
@@ -359,6 +363,8 @@ class ModerationCog(commands.Cog):
     @staff_or_developer(moderate_members=True)
     async def case_view(self, interaction: discord.Interaction, case_id: str):
         await interaction.response.defer(ephemeral=True)
+        if not await self.ensure_staff_server(interaction):
+            return await interaction.followup.send("❌ This command can only be used inside the linked staff server or the linked public server.", ephemeral=True)
         db_cog = self.bot.get_cog("DatabaseCog")
         case = await db_cog.mod_cases.find_one({"case_id": case_id})
         if not case:
@@ -392,7 +398,7 @@ class ModerationCog(commands.Cog):
                       minutes: int, reason: str, evidence: str = None):
         await interaction.response.defer(ephemeral=True)
         if not await self.ensure_staff_server(interaction):
-            return await interaction.followup.send("❌ Staff server only.", ephemeral=True)
+            return await interaction.followup.send("❌ This command can only be used inside the linked staff server or the linked public server.", ephemeral=True)
         target_member = await self.get_public_member(interaction, target.id)
         if not target_member:
             return await interaction.followup.send("❌ User not found.", ephemeral=True)
@@ -413,7 +419,7 @@ class ModerationCog(commands.Cog):
                   reason: str, evidence: str = None):
         await interaction.response.defer(ephemeral=True)
         if not await self.ensure_staff_server(interaction):
-            return await interaction.followup.send("❌ Staff server only.", ephemeral=True)
+            return await interaction.followup.send("❌ This command can only be used inside the linked staff server or the linked public server.", ephemeral=True)
         target_member = await self.get_public_member(interaction, target.id)
         if not target_member:
             return await interaction.followup.send("❌ User not found.", ephemeral=True)
@@ -432,7 +438,7 @@ class ModerationCog(commands.Cog):
                    reason: str, evidence: str = None):
         await interaction.response.defer(ephemeral=True)
         if not await self.ensure_staff_server(interaction):
-            return await interaction.followup.send("❌ Staff server only.", ephemeral=True)
+            return await interaction.followup.send("❌ This command can only be used inside the linked staff server or the linked public server.", ephemeral=True)
         target_member = await self.get_public_member(interaction, target.id)
         if not target_member:
             return await interaction.followup.send("❌ User not found.", ephemeral=True)
@@ -448,6 +454,8 @@ class ModerationCog(commands.Cog):
     @staff_or_developer(moderate_members=True)
     async def history(self, interaction: discord.Interaction, target: discord.User):
         await interaction.response.defer(ephemeral=True)
+        if not await self.ensure_staff_server(interaction):
+            return await interaction.followup.send("❌ This command can only be used inside the linked staff server or the linked public server.", ephemeral=True)
         db_cog = self.bot.get_cog("DatabaseCog")
         cases = await db_cog.mod_cases.find({"target_id": str(target.id)}).sort("timestamp", -1).limit(10).to_list(None)
         if not cases:
@@ -467,6 +475,8 @@ class ModerationCog(commands.Cog):
     @staff_or_developer(manage_messages=True)
     async def purge(self, interaction: discord.Interaction, amount: app_commands.Range[int, 1, 100]):
         await interaction.response.defer(ephemeral=True)
+        if not await self.ensure_staff_server(interaction):
+            return await interaction.followup.send("❌ This command can only be used inside the linked staff server or the linked public server.", ephemeral=True)
         if not interaction.channel.permissions_for(interaction.guild.me).manage_messages:
             return await interaction.followup.send("❌ I do not have permission to manage messages.", ephemeral=True)
         deleted = await interaction.channel.purge(limit=amount)
@@ -479,6 +489,8 @@ class ModerationCog(commands.Cog):
     @staff_or_developer(manage_messages=True)
     async def purge_user(self, interaction: discord.Interaction, user_id: str, amount: app_commands.Range[int, 1, 100]):
         await interaction.response.defer(ephemeral=True)
+        if not await self.ensure_staff_server(interaction):
+            return await interaction.followup.send("❌ This command can only be used inside the linked staff server or the linked public server.", ephemeral=True)
         if not interaction.channel.permissions_for(interaction.guild.me).manage_messages:
             return await interaction.followup.send("❌ I do not have permission to manage messages.", ephemeral=True)
         deleted = []
@@ -528,7 +540,6 @@ class ModerationCog(commands.Cog):
                 {"_id": target_id},
                 {"$pull": {"active_warns": case_id}, "$inc": {"warnings": -1}}
             )
-            # Audit log for expiration
             audit_cog = self.bot.get_cog("AuditCog")
             if audit_cog:
                 await audit_cog.log_audit(
