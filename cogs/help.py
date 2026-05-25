@@ -53,13 +53,13 @@ class HelpDropdown(discord.ui.Select):
 
         elif category == "Modmail":
             embed.title = "📩 Modmail Commands"
-            embed.description = "Professional support ticket system with anonymous replies."
+            embed.description = "Professional support ticket system with anonymous replies and transcripts."
             embed.add_field(name="Available Commands", value="\n".join([
-                "`/setupmodmail` → Configure modmail category.",
+                "`/setupmodmail` → Configure modmail category and transcript channel.",
                 "`/panel` → Send modmail panel.",
                 "`DM the bot` → Create a support ticket.",
                 "`Claim Button` → Claim a ticket.",
-                "`Close Button` → Close a ticket.",
+                "`Close Button` → Close a ticket (saves transcript).",
             ]), inline=False)
 
         elif category == "Reception":
@@ -101,11 +101,13 @@ class HelpDropdown(discord.ui.Select):
                 "`/unsticky` → Remove sticky messages.",
                 "`/ping` → View bot latency.",
                 "`/serverinfo` → View server information.",
+                "`/addreactrole` → Add a reaction role to a message.",
+                "`/removereactrole` → Remove a reaction role.",
             ]), inline=False)
 
         elif category == "Staff":
             embed.title = "👥 Staff Commands"
-            embed.description = "Department assignment and quota tracking."
+            embed.description = "Department assignment, quota tracking, and audit logs."
             embed.add_field(name="Available Commands", value="\n".join([
                 "`/setdepartment` → Assign a staff member to a department.",
                 "`/removedepartment` → Remove a staff member from their department.",
@@ -114,6 +116,8 @@ class HelpDropdown(discord.ui.Select):
                 "`/addduty` → Add duties to a rank.",
                 "`/poststaffdropdown` → Post the ranks dropdown.",
                 "`/deployquotamatrix` → Deploy shift/quota dashboard.",
+                "`/setauditchannel` → Set the channel for audit log notifications.",
+                "`/auditlog` → View recent audit log entries.",
             ]), inline=False)
 
         elif category == "Staff Teams":
@@ -129,11 +133,12 @@ class HelpDropdown(discord.ui.Select):
 
         elif category == "AutoMod":
             embed.title = "🤖 AutoMod Commands"
-            embed.description = "Automatic moderation configuration."
+            embed.description = "Automatic moderation configuration, including slowmode on spam."
             embed.add_field(name="Available Commands", value="\n".join([
                 "`!automod links true/false` → Toggle anti‑links.",
-                "`!automod spam true/false` → Toggle anti‑spam.",
+                "`!automod spam true/false` → Toggle anti‑spam (punishment).",
                 "`!automod mentions true/false` → Toggle mention protection.",
+                "`!automod slowmode true/false` → Toggle auto‑slowmode on spam.",
                 "`!allowads` → Allow advertisements in channel.",
                 "`!removeads` → Remove advertisement permissions.",
             ]), inline=False)
