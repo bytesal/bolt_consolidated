@@ -7,10 +7,9 @@ import uuid
 from utils.checks import staff_or_developer
 
 
-# Warning escalation thresholds (based on ACTIVE warns)
 WARNING_THRESHOLDS = {
-    3: ("timeout", 60 * 60),      # 1 hour timeout
-    5: ("mute", 60 * 60 * 24),    # 24h timeout (Discord calls it timeout)
+    3: ("timeout", 60 * 60),
+    5: ("mute", 60 * 60 * 24),
     7: ("ban", None),
 }
 
@@ -25,25 +24,22 @@ class ModerationCog(commands.Cog):
         self.temp_punishment_loop.cancel()
 
     # ------------------------------------------------------------
-    # Helper: get linked servers (staff & public)
+    # Helpers
     # ------------------------------------------------------------
     async def get_linked_servers(self, guild_id: int):
         db_cog = self.bot.get_cog("DatabaseCog")
         if not db_cog:
             return None, None
-
         data = await db_cog.get_server_link(guild_id)
         if data:
             staff_guild = self.bot.get_guild(int(data["staff_guild_id"]))
             public_guild = self.bot.get_guild(int(data["public_guild_id"]))
             return staff_guild, public_guild
-
         data = await db_cog.get_link_by_public(guild_id)
         if data:
             staff_guild = self.bot.get_guild(int(data["staff_guild_id"]))
             public_guild = self.bot.get_guild(int(data["public_guild_id"]))
             return staff_guild, public_guild
-
         return None, None
 
     async def ensure_staff_server(self, interaction: discord.Interaction) -> bool:
@@ -62,7 +58,6 @@ class ModerationCog(commands.Cog):
     async def create_case(self, interaction, action, target, reason, evidence=None, duration=None):
         db_cog = self.bot.get_cog("DatabaseCog")
         _, public_guild = await self.get_linked_servers(interaction.guild.id)
-
         case_id = await self.generate_case()
         await db_cog.mod_cases.insert_one({
             "case_id": case_id,
@@ -77,9 +72,8 @@ class ModerationCog(commands.Cog):
             "duration": duration,
             "timestamp": datetime.utcnow(),
             "active": True,
-            "revoked": False   # for removed warns
+            "revoked": False
         })
-
         await db_cog.mod_users.update_one(
             {"_id": str(target.id)},
             {"$inc": {"total_cases": 1}},
@@ -114,15 +108,12 @@ class ModerationCog(commands.Cog):
         staff_guild, _ = await self.get_linked_servers(interaction.guild.id)
         if not staff_guild:
             return
-
         config = await db_cog.settings.find_one({"_id": f"modlog_{staff_guild.id}"})
         if not config:
             return
-
         channel = staff_guild.get_channel(int(config["value"]))
         if not channel:
             return
-
         embed = discord.Embed(
             title=f"🛡️ Moderation Action • {action.upper()}",
             color=discord.Color.orange(),
@@ -138,36 +129,26 @@ class ModerationCog(commands.Cog):
             embed.add_field(name="Evidence", value=evidence, inline=False)
         await channel.send(embed=embed)
 
-    # ------------------------------------------------------------
-    # Helper: get active warning count (supports legacy)
-    # ------------------------------------------------------------
     async def _get_active_warn_count(self, user_id: int) -> int:
         db_cog = self.bot.get_cog("DatabaseCog")
         profile = await db_cog.mod_users.find_one({"_id": str(user_id)})
         if not profile:
             return 0
-
-        # New system: active_warns list
         if "active_warns" in profile:
-            # Count only non‑revoked warn cases
             active = 0
             for case_id in profile["active_warns"]:
                 case = await db_cog.mod_cases.find_one({"case_id": case_id, "revoked": {"$ne": True}})
                 if case and case.get("action") == "warn":
                     active += 1
             return active
-
-        # Legacy: simple integer counter
         return profile.get("warnings", 0)
 
     async def handle_warning_escalation(self, interaction, target):
         active_warns = await self._get_active_warn_count(target.id)
         if active_warns not in WARNING_THRESHOLDS:
             return
-
         punishment, duration = WARNING_THRESHOLDS[active_warns]
         reason = f"Automatic escalation after {active_warns} active warnings."
-
         if punishment == "timeout":
             until = datetime.utcnow() + timedelta(seconds=duration)
             await target.timeout(until, reason=reason)
@@ -175,7 +156,7 @@ class ModerationCog(commands.Cog):
             await target.guild.ban(target, reason=reason)
 
     # ------------------------------------------------------------
-    # /setmodlog
+    # Commands
     # ------------------------------------------------------------
     @app_commands.command(name="setmodlog", description="Set the moderation log channel.")
     @staff_or_developer(administrator=True)
@@ -188,72 +169,48 @@ class ModerationCog(commands.Cog):
         )
         await interaction.response.send_message(f"✅ Mod‑log channel set to {channel.mention}")
 
-    # ------------------------------------------------------------
-    # /warn
-    # ------------------------------------------------------------
     @app_commands.command(name="warn", description="Warn a member.")
     @staff_or_developer(moderate_members=True)
     async def warn(self, interaction: discord.Interaction, target: discord.User,
                    reason: str, evidence: str = None):
         await interaction.response.defer(ephemeral=True)
-
         if not await self.ensure_staff_server(interaction):
             return await interaction.followup.send("❌ This command can only be used inside the linked staff server.", ephemeral=True)
-
         target = await self.get_public_member(interaction, target.id)
         if not target:
             return await interaction.followup.send("❌ User not found in linked public server.", ephemeral=True)
-
         db_cog = self.bot.get_cog("DatabaseCog")
         case_id = await self.create_case(interaction, "warn", target, reason, evidence)
-
-        # Update user profile: add to active_warns list
         await db_cog.mod_users.update_one(
             {"_id": str(target.id)},
             {"$push": {"active_warns": case_id}, "$inc": {"warnings": 1}},
             upsert=True
         )
-
         _, public_guild = await self.get_linked_servers(interaction.guild.id)
         active_count = await self._get_active_warn_count(target.id)
         await self.send_dm(target, public_guild, "Warn", reason, case_id,
                            interaction.user, evidence, active_count)
         await self.log_action(interaction, "warn", target, reason, case_id, evidence)
         await self.handle_warning_escalation(interaction, target)
-
         await interaction.followup.send(f"✅ {target.mention} warned successfully.\nCase: `#{case_id}`")
 
-    # ------------------------------------------------------------
-    # /removewarn
-    # ------------------------------------------------------------
     @app_commands.command(name="removewarn", description="Remove a specific warning by its case ID.")
     @staff_or_developer(moderate_members=True)
     async def remove_warn(self, interaction: discord.Interaction, target: discord.User, case_id: str):
         await interaction.response.defer(ephemeral=True)
-
         if not await self.ensure_staff_server(interaction):
             return await interaction.followup.send("❌ Staff server only.", ephemeral=True)
-
         db_cog = self.bot.get_cog("DatabaseCog")
-
-        # Find the warn case
         case = await db_cog.mod_cases.find_one({"case_id": case_id, "target_id": str(target.id), "action": "warn"})
         if not case:
             return await interaction.followup.send("❌ Warn case not found. Make sure the case ID is correct and belongs to this user.", ephemeral=True)
-
         if case.get("revoked", False):
             return await interaction.followup.send("❌ This warning has already been removed.", ephemeral=True)
-
-        # Mark as revoked
         await db_cog.mod_cases.update_one({"_id": case["_id"]}, {"$set": {"revoked": True, "active": False}})
-
-        # Remove from user's active_warns list
         await db_cog.mod_users.update_one(
             {"_id": str(target.id)},
             {"$pull": {"active_warns": case_id}, "$inc": {"warnings": -1}}
         )
-
-        # Log the removal
         staff_guild, _ = await self.get_linked_servers(interaction.guild.id)
         if staff_guild:
             config = await db_cog.settings.find_one({"_id": f"modlog_{staff_guild.id}"})
@@ -270,39 +227,29 @@ class ModerationCog(commands.Cog):
                     embed.add_field(name="Original Warn Case", value=f"`#{case_id}`", inline=False)
                     embed.add_field(name="Original Reason", value=case["reason"], inline=False)
                     await channel.send(embed=embed)
-
-        # Notify user (optional)
         try:
             await target.send(f"✅ Your warning `#{case_id}` has been removed by staff.")
         except Exception:
             pass
-
         await interaction.followup.send(f"✅ Warning `#{case_id}` removed for {target.mention}.")
 
-    # ------------------------------------------------------------
-    # /warns - list active warns with IDs
-    # ------------------------------------------------------------
     @app_commands.command(name="warns", description="List active warnings for a user.")
     @staff_or_developer(moderate_members=True)
     async def list_warns(self, interaction: discord.Interaction, target: discord.User):
         await interaction.response.defer(ephemeral=True)
-
         db_cog = self.bot.get_cog("DatabaseCog")
         profile = await db_cog.mod_users.find_one({"_id": str(target.id)})
         if not profile or not profile.get("active_warns"):
             return await interaction.followup.send(f"📭 {target.mention} has no active warnings.", ephemeral=True)
-
         active_warns = []
         for case_id in profile["active_warns"]:
             case = await db_cog.mod_cases.find_one({"case_id": case_id, "revoked": {"$ne": True}})
             if case and case["action"] == "warn":
                 active_warns.append(case)
-
         if not active_warns:
             return await interaction.followup.send(f"📭 {target.mention} has no active warnings.", ephemeral=True)
-
         embed = discord.Embed(title=f"Active Warnings for {target.display_name}", color=discord.Color.orange())
-        for w in active_warns[:10]:  # limit to 10
+        for w in active_warns[:10]:
             embed.add_field(
                 name=f"Case #{w['case_id']}",
                 value=f"Reason: {w['reason']}\nModerator: {w['issuer_name']}\nDate: {w['timestamp'].strftime('%Y-%m-%d')}",
@@ -310,10 +257,6 @@ class ModerationCog(commands.Cog):
             )
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    # ------------------------------------------------------------
-    # /timeout, /ban, /kick, /history, /purge, /purgeuser
-    # (unchanged from original except using updated helpers)
-    # ------------------------------------------------------------
     @app_commands.command(name="timeout", description="Timeout a member.")
     @staff_or_developer(moderate_members=True)
     async def timeout(self, interaction: discord.Interaction, target: discord.User,
@@ -414,9 +357,6 @@ class ModerationCog(commands.Cog):
         embed.set_footer(text=f"Moderator • {interaction.user}")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    # ------------------------------------------------------------
-    # Temp loop (placeholder)
-    # ------------------------------------------------------------
     @tasks.loop(minutes=1)
     async def temp_punishment_loop(self):
         pass
