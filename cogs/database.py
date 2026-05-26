@@ -7,7 +7,6 @@ from utils.logger import get_logger
 
 logger = get_logger("database")
 
-# Import views – these are optional; if they fail, continue
 try:
     from cogs.applications import ReviewButtons
     from cogs.staff_quota import StaffQuotaView, RanksDropdownView
@@ -36,9 +35,10 @@ class DatabaseCog(commands.Cog):
             return
 
         try:
-            self.client = AsyncIOMotorClient(mongo_uri)
+            self.client = AsyncIOMotorClient(mongo_uri, serverSelectionTimeoutMS=5000)
             self.db = self.client["bolt_multi_server_db"]
-            logger.info("MongoDB client created (connection will be established on first operation).")
+            # Test connection
+            logger.info("MongoDB client created. Testing connection...")
         except Exception as e:
             logger.critical(f"Failed to create MongoDB client: {e}")
             logger.critical(traceback.format_exc())
@@ -71,9 +71,6 @@ class DatabaseCog(commands.Cog):
         self.reaction_roles = self.db["reaction_roles"]
         self.role_backup = self.db["role_backup"]
 
-    # ------------------------------------------------------------
-    # Prefix Helpers
-    # ------------------------------------------------------------
     async def get_guild_prefix(self, guild_id: int):
         if not self.db:
             return None
@@ -81,7 +78,7 @@ class DatabaseCog(commands.Cog):
             doc = await self.settings.find_one({"_id": f"prefix_{guild_id}"})
             return doc["value"] if doc else None
         except Exception as e:
-            logger.error(f"Failed to fetch prefix for guild {guild_id}: {e}")
+            logger.error(f"Failed to fetch prefix: {e}")
             return None
 
     async def set_guild_prefix(self, guild_id: int, prefix: str):
@@ -94,11 +91,8 @@ class DatabaseCog(commands.Cog):
                 upsert=True
             )
         except Exception as e:
-            logger.error(f"Failed to set prefix for guild {guild_id}: {e}")
+            logger.error(f"Failed to set prefix: {e}")
 
-    # ------------------------------------------------------------
-    # Server Link Helpers
-    # ------------------------------------------------------------
     async def get_server_link(self, staff_guild_id: int):
         if not self.db:
             return None
@@ -155,9 +149,6 @@ class DatabaseCog(commands.Cog):
         except Exception as e:
             logger.error(f"Failed to update server link: {e}")
 
-    # ------------------------------------------------------------
-    # Index Management
-    # ------------------------------------------------------------
     async def ensure_indexes(self):
         if not self.db:
             logger.warning("Database not connected – skipping index creation.")
@@ -185,9 +176,6 @@ class DatabaseCog(commands.Cog):
         except Exception as e:
             logger.error(f"Index creation error: {e}")
 
-    # ------------------------------------------------------------
-    # Persistent View Restoration
-    # ------------------------------------------------------------
     async def restore_persistent_views(self):
         if not self.db:
             logger.warning("Database not connected – cannot restore persistent views.")
