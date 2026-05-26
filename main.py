@@ -114,11 +114,9 @@ class BoltBot(commands.Bot):
         else:
             logger.critical("Database not connected – skipping view restoration and index creation.")
 
-        # Clear old guild commands (fix duplicates) – only if database is available
+        # Clear old guild commands (if database connected)
         if db_cog and db_cog.db:
             await self._clear_guild_commands()
-        else:
-            logger.warning("Database not available – skipping guild command clearing.")
 
         # Sync global commands
         synced = await self.tree.sync()
@@ -142,7 +140,6 @@ class BoltBot(commands.Bot):
             logger.error(f"Modmail views registration failed: {e}")
 
     async def _clear_guild_commands(self):
-        """Clear commands from staff/main guilds if configured."""
         guilds_to_clear = []
         if STAFF_GUILD:
             guilds_to_clear.append(STAFF_GUILD)
@@ -201,7 +198,7 @@ async def global_blacklist_check(ctx):
         return True
     db_cog = bot.get_cog("DatabaseCog")
     if not db_cog or db_cog.db is None:
-        return True  # No database – allow commands (they will fail later, but we log)
+        return True
     user_blacklist = await db_cog.blacklist.find_one({"_id": str(ctx.author.id), "type": "user"})
     if user_blacklist:
         return False
@@ -215,9 +212,7 @@ async def global_blacklist_check(ctx):
             return False
     return True
 
-# ============================================================
-# GLOBAL INTERACTION ERROR HANDLER – LOGS FULL TRACEBACK
-# ============================================================
+# Global error handlers – log full traceback
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
@@ -231,7 +226,6 @@ async def on_command_error(ctx, error):
 
 @bot.event
 async def on_application_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
-    """Handle ALL slash command errors – logs full traceback."""
     logger.error(f"Slash command error: {error}")
     logger.error(traceback.format_exc())
     try:
@@ -250,7 +244,6 @@ async def on_application_command_error(interaction: discord.Interaction, error: 
 
 @bot.tree.error
 async def on_tree_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
-    """Catch errors from the command tree."""
     logger.error(f"Tree command error: {error}")
     logger.error(traceback.format_exc())
     try:
