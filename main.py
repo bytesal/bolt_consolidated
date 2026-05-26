@@ -80,7 +80,7 @@ class BoltBot(commands.Bot):
     async def setup_hook(self):
         logger.info("setup_hook started.")
 
-        # Load cogs with full error logging
+        # Load cogs
         cogs_dir = os.path.join(BASE_DIR, "cogs")
         if os.path.exists(cogs_dir):
             for filename in sorted(os.listdir(cogs_dir)):
@@ -98,7 +98,7 @@ class BoltBot(commands.Bot):
 
         # Database restoration and indexes
         db_cog = self.get_cog("DatabaseCog")
-        if db_cog:
+        if db_cog and db_cog.db is not None:
             if hasattr(db_cog, "restore_persistent_views"):
                 try:
                     await db_cog.restore_persistent_views()
@@ -111,9 +111,14 @@ class BoltBot(commands.Bot):
                     logger.info("Database indexes verified/created.")
                 except Exception as e:
                     logger.error(f"Index creation failed: {e}")
+        else:
+            logger.critical("Database not connected – skipping view restoration and index creation.")
 
-        # Clear old guild commands (fix duplicates)
-        await self._clear_guild_commands()
+        # Clear old guild commands (fix duplicates) – only if database is available
+        if db_cog and db_cog.db:
+            await self._clear_guild_commands()
+        else:
+            logger.warning("Database not available – skipping guild command clearing.")
 
         # Sync global commands
         synced = await self.tree.sync()
@@ -195,8 +200,8 @@ async def global_blacklist_check(ctx):
     if ctx.author.id in bot.DEVELOPER_IDS:
         return True
     db_cog = bot.get_cog("DatabaseCog")
-    if not db_cog or not db_cog.db:
-        return True
+    if not db_cog or db_cog.db is None:
+        return True  # No database – allow commands (they will fail later, but we log)
     user_blacklist = await db_cog.blacklist.find_one({"_id": str(ctx.author.id), "type": "user"})
     if user_blacklist:
         return False
@@ -211,11 +216,10 @@ async def global_blacklist_check(ctx):
     return True
 
 # ============================================================
-# GLOBAL INTERACTION ERROR HANDLERS – PREVENTS SILENT FAILURES
+# GLOBAL INTERACTION ERROR HANDLER – LOGS FULL TRACEBACK
 # ============================================================
 @bot.event
 async def on_command_error(ctx, error):
-    """Handle prefix command errors."""
     if isinstance(error, commands.CommandNotFound):
         return
     if isinstance(error, commands.CommandOnCooldown):
@@ -227,18 +231,18 @@ async def on_command_error(ctx, error):
 
 @bot.event
 async def on_application_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
-    """Handle ALL slash command errors – prevents timeouts."""
+    """Handle ALL slash command errors – logs full traceback."""
     logger.error(f"Slash command error: {error}")
     logger.error(traceback.format_exc())
     try:
         if not interaction.response.is_done():
             await interaction.response.send_message(
-                "❌ An error occurred while executing this command. Please try again later.",
+                "❌ An error occurred while executing this command. Please check the bot logs.",
                 ephemeral=True
             )
         else:
             await interaction.followup.send(
-                "❌ An error occurred while executing this command. Please try again later.",
+                "❌ An error occurred while executing this command. Please check the bot logs.",
                 ephemeral=True
             )
     except Exception as e:
@@ -252,19 +256,19 @@ async def on_tree_error(interaction: discord.Interaction, error: discord.app_com
     try:
         if not interaction.response.is_done():
             await interaction.response.send_message(
-                "❌ An error occurred. Please report this to the bot developer.",
+                "❌ An error occurred. Please check the bot logs.",
                 ephemeral=True
             )
         else:
             await interaction.followup.send(
-                "❌ An error occurred. Please report this to the bot developer.",
+                "❌ An error occurred. Please check the bot logs.",
                 ephemeral=True
             )
     except Exception:
         pass
 
 # ------------------------------------------------------------
-# Signal handling for graceful shutdown
+# Signal handling
 # ------------------------------------------------------------
 def handle_shutdown_signal(signum, frame):
     logger.info(f"Received signal {signal.Signals(signum).name}. Shutting down...")
@@ -274,7 +278,7 @@ signal.signal(signal.SIGTERM, handle_shutdown_signal)
 signal.signal(signal.SIGINT, handle_shutdown_signal)
 
 # ------------------------------------------------------------
-# Main entry point
+# Main entry
 # ------------------------------------------------------------
 async def main():
     start_flask()
