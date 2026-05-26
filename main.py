@@ -96,7 +96,7 @@ class BoltBot(commands.Bot):
         # Static views
         self._add_static_views()
 
-        # Database restoration and indexes
+        # Database restoration and indexes (optional)
         db_cog = self.get_cog("DatabaseCog")
         if db_cog is not None and db_cog.db is not None:
             if hasattr(db_cog, "restore_persistent_views"):
@@ -111,14 +111,13 @@ class BoltBot(commands.Bot):
                     logger.info("Database indexes verified/created.")
                 except Exception as e:
                     logger.error(f"Index creation failed: {e}")
-        else:
-            logger.critical("Database not connected – skipping view restoration and index creation.")
 
-        # Clear old guild commands (if database connected)
-        if db_cog is not None and db_cog.db is not None:
-            await self._clear_guild_commands()
+        # ------------------------------------------------------------
+        # FIX: Clear guild commands unconditionally (once) to remove duplicates
+        # ------------------------------------------------------------
+        await self._clear_guild_commands_once()
 
-        # Sync global commands
+        # Sync only global commands (no per‑guild sync)
         synced = await self.tree.sync()
         logger.info(f"Synced {len(synced)} global commands.")
 
@@ -139,19 +138,43 @@ class BoltBot(commands.Bot):
         except Exception as e:
             logger.error(f"Modmail views registration failed: {e}")
 
-    async def _clear_guild_commands(self):
+    async def _clear_guild_commands_once(self):
+        """Clear commands from staff/main guilds exactly once (using database flag)."""
+        # If no guild IDs are set, nothing to clear
+        if not STAFF_GUILD and not MAIN_GUILD:
+            logger.info("No guild IDs configured; skipping clear.")
+            return
+
+        # Use database to store a flag that we've already cleared
+        db_cog = self.get_cog("DatabaseCog")
+        if db_cog is not None and db_cog.db is not None:
+            cleared_flag = await db_cog.settings.find_one({"_id": "guild_commands_cleared"})
+            if cleared_flag:
+                logger.info("Guild commands already cleared once. Skipping.")
+                return
+
+        # Clear guild commands
         guilds_to_clear = []
         if STAFF_GUILD:
             guilds_to_clear.append(STAFF_GUILD)
-        if MAIN_GUILD and MAIN_GUILD.id != STAFF_GUILD_ID:
+        if MAIN_GUILD and MAIN_GUILD.id != (STAFF_GUILD.id if STAFF_GUILD else 0):
             guilds_to_clear.append(MAIN_GUILD)
 
         for guild in guilds_to_clear:
             try:
                 await self.tree.sync(guild=guild, commands=[])
-                logger.info(f"Cleared commands from guild {guild.id}")
+                logger.info(f"Cleared all commands from guild {guild.id}")
             except Exception as e:
                 logger.error(f"Failed to clear commands from guild {guild.id}: {e}")
+
+        # Mark as cleared in database (if available)
+        if db_cog is not None and db_cog.db is not None:
+            await db_cog.settings.update_one(
+                {"_id": "guild_commands_cleared"},
+                {"$set": {"value": True}},
+                upsert=True
+            )
+            logger.info("Marked guild commands as cleared in database.")
 
     async def on_ready(self):
         if not self._ready_flag:
@@ -212,7 +235,6 @@ async def global_blacklist_check(ctx):
             return False
     return True
 
-# Global error handlers – log full traceback
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
