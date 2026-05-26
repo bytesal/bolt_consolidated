@@ -72,7 +72,7 @@ class DatabaseCog(commands.Cog):
         self.role_backup = self.db["role_backup"]
 
     async def get_guild_prefix(self, guild_id: int):
-        if not self.db:
+        if self.db is None:
             return None
         try:
             doc = await self.settings.find_one({"_id": f"prefix_{guild_id}"})
@@ -82,7 +82,7 @@ class DatabaseCog(commands.Cog):
             return None
 
     async def set_guild_prefix(self, guild_id: int, prefix: str):
-        if not self.db:
+        if self.db is None:
             return
         try:
             await self.settings.update_one(
@@ -94,7 +94,7 @@ class DatabaseCog(commands.Cog):
             logger.error(f"Failed to set prefix: {e}")
 
     async def get_server_link(self, staff_guild_id: int):
-        if not self.db:
+        if self.db is None:
             return None
         try:
             return await self.server_links.find_one({"staff_guild_id": staff_guild_id})
@@ -103,7 +103,7 @@ class DatabaseCog(commands.Cog):
             return None
 
     async def get_link_by_public(self, public_guild_id: int):
-        if not self.db:
+        if self.db is None:
             return None
         try:
             return await self.server_links.find_one({"public_guild_id": public_guild_id})
@@ -112,7 +112,7 @@ class DatabaseCog(commands.Cog):
             return None
 
     async def link_servers(self, staff_guild_id: int, public_guild_id: int):
-        if not self.db:
+        if self.db is None:
             return
         try:
             await self.server_links.update_one(
@@ -124,7 +124,7 @@ class DatabaseCog(commands.Cog):
             logger.error(f"Failed to link servers: {e}")
 
     async def unlink_servers(self, staff_guild_id: int):
-        if not self.db:
+        if self.db is None:
             return
         try:
             await self.server_links.delete_one({"staff_guild_id": staff_guild_id})
@@ -132,7 +132,7 @@ class DatabaseCog(commands.Cog):
             logger.error(f"Failed to unlink servers: {e}")
 
     async def update_server_link(self, old_staff_guild_id: int, new_staff_guild_id: int = None, new_public_guild_id: int = None):
-        if not self.db:
+        if self.db is None:
             return
         update_data = {}
         if new_staff_guild_id:
@@ -150,7 +150,7 @@ class DatabaseCog(commands.Cog):
             logger.error(f"Failed to update server link: {e}")
 
     async def ensure_indexes(self):
-        if not self.db:
+        if self.db is None:
             logger.warning("Database not connected – skipping index creation.")
             return
         try:
@@ -177,7 +177,7 @@ class DatabaseCog(commands.Cog):
             logger.error(f"Index creation error: {e}")
 
     async def restore_persistent_views(self):
-        if not self.db:
+        if self.db is None:
             logger.warning("Database not connected – cannot restore persistent views.")
             return
         logger.info("Restoring persistent views...")
