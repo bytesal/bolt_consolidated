@@ -63,7 +63,7 @@ async def get_prefix(bot, message):
     if not message.guild:
         return "!"
     db_cog = bot.get_cog("DatabaseCog")
-    if db_cog and hasattr(db_cog, "get_guild_prefix"):
+    if db_cog is not None and hasattr(db_cog, "get_guild_prefix"):
         custom_prefix = await db_cog.get_guild_prefix(message.guild.id)
         if custom_prefix:
             return custom_prefix
@@ -98,7 +98,7 @@ class BoltBot(commands.Bot):
 
         # Database restoration and indexes
         db_cog = self.get_cog("DatabaseCog")
-        if db_cog and db_cog.db is not None:
+        if db_cog is not None and db_cog.db is not None:
             if hasattr(db_cog, "restore_persistent_views"):
                 try:
                     await db_cog.restore_persistent_views()
@@ -115,7 +115,7 @@ class BoltBot(commands.Bot):
             logger.critical("Database not connected – skipping view restoration and index creation.")
 
         # Clear old guild commands (if database connected)
-        if db_cog and db_cog.db:
+        if db_cog is not None and db_cog.db is not None:
             await self._clear_guild_commands()
 
         # Sync global commands
@@ -197,7 +197,7 @@ async def global_blacklist_check(ctx):
     if ctx.author.id in bot.DEVELOPER_IDS:
         return True
     db_cog = bot.get_cog("DatabaseCog")
-    if not db_cog or db_cog.db is None:
+    if db_cog is None or db_cog.db is None:
         return True
     user_blacklist = await db_cog.blacklist.find_one({"_id": str(ctx.author.id), "type": "user"})
     if user_blacklist:
