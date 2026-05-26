@@ -7,14 +7,13 @@ from utils.logger import get_logger
 
 logger = get_logger("database")
 
-# Import views – these must be importable even if database fails
+# Import views – these are optional; if they fail, continue
 try:
     from cogs.applications import ReviewButtons
     from cogs.staff_quota import StaffQuotaView, RanksDropdownView
     from cogs.modmail import TicketControls
 except ImportError as e:
     logger.error(f"Failed to import view classes: {e}")
-    # Define dummy placeholders to avoid NameError if import fails
     ReviewButtons = None
     StaffQuotaView = None
     RanksDropdownView = None
@@ -29,10 +28,11 @@ class DatabaseCog(commands.Cog):
         self._init_db()
 
     def _init_db(self):
-        """Initialize MongoDB connection – safe, with error logging."""
         mongo_uri = os.getenv("MONGO_URI") or os.getenv("MONGODB_URI")
         if not mongo_uri:
-            logger.critical("MONGO_URI or MONGODB_URI environment variable not set.")
+            logger.critical("MONGO_URI or MONGODB_URI environment variable not set. Database features will not work.")
+            self.client = None
+            self.db = None
             return
 
         try:
@@ -41,11 +41,12 @@ class DatabaseCog(commands.Cog):
             logger.info("MongoDB client created (connection will be established on first operation).")
         except Exception as e:
             logger.critical(f"Failed to create MongoDB client: {e}")
+            logger.critical(traceback.format_exc())
             self.client = None
             self.db = None
             return
 
-        # Define collections (lazy – they will be created on first use)
+        # Define collections (will be None if db is None)
         self.settings = self.db["global_settings"]
         self.server_links = self.db["server_links"]
         self.leveling = self.db["user_levels"]
@@ -104,7 +105,7 @@ class DatabaseCog(commands.Cog):
         try:
             return await self.server_links.find_one({"staff_guild_id": staff_guild_id})
         except Exception as e:
-            logger.error(f"Failed to fetch server link for staff guild {staff_guild_id}: {e}")
+            logger.error(f"Failed to fetch server link: {e}")
             return None
 
     async def get_link_by_public(self, public_guild_id: int):
@@ -113,7 +114,7 @@ class DatabaseCog(commands.Cog):
         try:
             return await self.server_links.find_one({"public_guild_id": public_guild_id})
         except Exception as e:
-            logger.error(f"Failed to fetch link for public guild {public_guild_id}: {e}")
+            logger.error(f"Failed to fetch link by public: {e}")
             return None
 
     async def link_servers(self, staff_guild_id: int, public_guild_id: int):
@@ -158,7 +159,6 @@ class DatabaseCog(commands.Cog):
     # Index Management
     # ------------------------------------------------------------
     async def ensure_indexes(self):
-        """Create necessary indexes for performance (if database connected)."""
         if not self.db:
             logger.warning("Database not connected – skipping index creation.")
             return
@@ -186,43 +186,43 @@ class DatabaseCog(commands.Cog):
             logger.error(f"Index creation error: {e}")
 
     # ------------------------------------------------------------
-    # Persistent View Restoration (only if database connected)
+    # Persistent View Restoration
     # ------------------------------------------------------------
     async def restore_persistent_views(self):
         if not self.db:
             logger.warning("Database not connected – cannot restore persistent views.")
             return
         logger.info("Restoring persistent views...")
-        try:
-            if ReviewButtons is not None:
+        if ReviewButtons is not None:
+            try:
                 async for app_doc in self.applications.find({"status": "pending"}):
                     app_id = str(app_doc["_id"])
                     job_name = app_doc.get("job_name", "Unknown Position")
                     self.bot.add_view(ReviewButtons(self.bot, app_id, job_name))
-        except Exception as e:
-            logger.error(f"Failed to restore ReviewButtons: {e}")
-        try:
-            if StaffQuotaView is not None:
+            except Exception as e:
+                logger.error(f"Failed to restore ReviewButtons: {e}")
+        if StaffQuotaView is not None:
+            try:
                 self.bot.add_view(StaffQuotaView(self.bot))
-        except Exception as e:
-            logger.error(f"Failed to restore StaffQuotaView: {e}")
-        try:
-            if RanksDropdownView is not None:
+            except Exception as e:
+                logger.error(f"Failed to restore StaffQuotaView: {e}")
+        if RanksDropdownView is not None:
+            try:
                 ranks_map = {}
                 async for r in self.staff_ranks.find():
                     ranks_map[r["name"]] = r.get("description", "")
                 if not ranks_map:
                     ranks_map["Default"] = "Pending configuration."
                 self.bot.add_view(RanksDropdownView(ranks_map))
-        except Exception as e:
-            logger.error(f"Failed to restore RanksDropdownView: {e}")
-        try:
-            if TicketControls is not None:
+            except Exception as e:
+                logger.error(f"Failed to restore RanksDropdownView: {e}")
+        if TicketControls is not None:
+            try:
                 async for ticket in self.modmail_tickets.find({"status": "open"}):
                     if ticket.get("user_id"):
                         self.bot.add_view(TicketControls(self.bot))
-        except Exception as e:
-            logger.error(f"Failed to restore TicketControls: {e}")
+            except Exception as e:
+                logger.error(f"Failed to restore TicketControls: {e}")
         logger.info("Persistent view restoration complete.")
 
 
